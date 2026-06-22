@@ -1,5 +1,55 @@
-*conf*.json
-.DS_Store
-__pycache__
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+
+# IDE
 .idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
 .env
+.env.local
+*conf*.json
+
+# uv
+uv.lock
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Databricks
+.databricks/
+
+# Test output
+test_output/
+
+# Claude Code
+.claude/
+
+# Serena cache
+.serena/cache/
+
+# Tool caches
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+
+# Node.js (frontend dev)
+node_modules/
+
+# Docs (local-only working drafts)
+docs/
+
+.serena

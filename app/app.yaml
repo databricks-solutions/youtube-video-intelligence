@@ -1,0 +1,19 @@
+command:
+  - "python"
+  - "app.py"
+
+# PGHOST, PGPORT, PGDATABASE, PGUSER (and, when available, PGPASSWORD) are
+# auto-injected by the Databricks Apps platform from the linked `postgres`
+# resource in databricks.yml. The Lakebase endpoint is resolved at runtime
+# from PGHOST (see app/lakebase.py), so no resource ID is hardcoded and the
+# app is portable across workspaces, prefixes, and deploy targets.
+#
+# Optional override: set LAKEBASE_ENDPOINT to the full endpoint resource name
+# ("projects/<project>/branches/<branch>/endpoints/<endpoint>") to skip
+# runtime resolution.
+env:
+  # Schema for Lakebase tables. Non-public is required: PostgreSQL 15+ revokes
+  # CREATE on `public` from non-owners. The app's service principal creates and
+  # owns this schema on first startup.
+  - name: LAKEBASE_SCHEMA
+    value: "app"

@@ -1,0 +1,39 @@
+bundle:
+  name: youtube-gemini-video-analysis
+
+variables:
+  prefix:
+    description: "Unique prefix for resource names (e.g., your initials or team name)"
+    default: "sc"
+
+targets:
+  dev:
+    default: true
+    mode: development
+    workspace:
+      # Set your workspace host here, or omit this line and provide it via the
+      # active CLI profile (databricks auth login) or the DATABRICKS_HOST env var.
+      host: https://YOUR-WORKSPACE.cloud.databricks.com
+
+resources:
+  apps:
+    video_intelligence_app:
+      name: "${var.prefix}-video-intel-${bundle.target}"
+      description: "Real-time YouTube video analysis with Gemini + Lakebase history"
+      source_code_path: ./app
+      resources:
+        - name: lakebase-history
+          description: "Lakebase database for analysis history"
+          postgres:
+            branch: "projects/${var.prefix}-video-intel-${bundle.target}/branches/production"
+            # The default database name is always "databricks-postgres" (a fixed
+            # name, not an auto-generated ID), so this value is deterministic and
+            # needs no manual update after deploy.
+            database: "projects/${var.prefix}-video-intel-${bundle.target}/branches/production/databases/databricks-postgres"
+            permission: "CAN_CONNECT_AND_CREATE"
+
+  postgres_projects:
+    video_intel_db:
+      project_id: "${var.prefix}-video-intel-${bundle.target}"
+      display_name: "Video Intelligence History"
+      pg_version: "17"

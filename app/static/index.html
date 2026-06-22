@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YouTube Video Intelligence</title>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+  <!-- CDN deps are pinned: an unpinned @babel/standalone auto-upgraded to Babel 8,
+       whose preset-react defaults to the automatic JSX runtime and injects an
+       `import` into the compiled output, which the in-browser transformer cannot
+       append as a classic script ("Cannot use import statement outside a module").
+       Babel 7 keeps the classic runtime (React.createElement), so pin to 7.x. -->
+  <script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.26.4/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@14/marked.min.js"></script>
+  <script src="utils.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0f0f0f; color: #f1f1f1; font-family: 'Roboto', sans-serif; }
+
+    .container { max-width: 1400px; margin: 0 auto; padding: 0 40px; }
+
+    /* Header */
+    .header { display: flex; align-items: center; gap: 14px; padding: 20px 0 18px; border-bottom: 1px solid #272727; margin-bottom: 16px; }
+    .header a { display: contents; color: inherit; text-decoration: none; }
+    .header a:hover h1 { color: #fff; }
+    .header h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; transition: color 0.15s; }
+    .header .subtitle { font-size: 0.8rem; color: #717171; font-weight: 400; letter-spacing: 0.03em; }
+
+    /* Tabs */
+    .tabs { display: flex; gap: 0; border-bottom: 1px solid #272727; margin-bottom: 20px; }
+    .tab { padding: 10px 20px; cursor: pointer; color: #aaa; font-weight: 500; border-bottom: 2px solid transparent; background: none; border-top: none; border-left: none; border-right: none; font-size: 14px; font-family: inherit; }
+    .tab:hover { color: #f1f1f1; }
+    .tab.active { color: #f1f1f1; border-bottom-color: #f1f1f1; }
+
+    /* Layout */
+    .tab-layout { display: flex; gap: 20px; }
+    .tab-main { flex: 3; min-width: 0; }
+    .tab-sidebar { flex: 1; min-width: 220px; max-width: 280px; }
+
+    /* Inputs */
+    .field { margin-bottom: 12px; }
+    .field label { display: block; color: #aaa; font-size: 13px; margin-bottom: 4px; }
+    .field input, .field textarea { width: 100%; background: #121212; border: 1px solid #3f3f3f; border-radius: 6px; color: #f1f1f1; padding: 10px 12px; font-size: 14px; font-family: inherit; outline: none; }
+    .field input:focus, .field textarea:focus { border-color: #666; }
+    .field textarea { resize: vertical; min-height: 60px; }
+
+    /* Buttons */
+    .btn { padding: 12px 24px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; width: 100%; }
+    .btn-primary { background: #cc0000; color: white; }
+    .btn-primary:hover { background: #e60000; }
+    .btn-primary:disabled { background: #661111; cursor: not-allowed; opacity: 0.7; }
+    .btn-secondary { background: #272727; color: #f1f1f1; border: 1px solid #3f3f3f; }
+    .btn-secondary:hover { background: #3f3f3f; }
+    .btn-row { display: flex; gap: 10px; margin-bottom: 16px; }
+    .btn-row .btn { flex: 1; }
+
+    /* Card */
+    .video-card { display: flex; gap: 16px; padding: 12px; border: 1px solid #272727; border-radius: 8px; margin-bottom: 12px; background: #181818; }
+    .video-card img { width: 180px; height: auto; border-radius: 6px; object-fit: cover; flex-shrink: 0; }
+    .video-card h3 { margin: 0 0 4px; font-size: 15px; }
+    .video-card h3 a { color: #58a6ff; text-decoration: none; }
+    .video-card .meta { color: #888; font-size: 13px; margin-bottom: 6px; }
+    .video-card .desc { color: #aaa; font-size: 12px; }
+
+    /* Result */
+    .result { background: #181818; border: 1px solid #272727; border-radius: 8px; padding: 16px; margin-top: 12px; line-height: 1.6; }
+    .result h1, .result h2, .result h3 { color: #f1f1f1; margin: 12px 0 6px; }
+    .result p { margin: 8px 0; }
+    .result strong { color: #f1f1f1; }
+    .result ul { padding-left: 20px; }
+    .result li { margin: 4px 0; }
+
+    /* Spinner */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner-wrap { display: flex; align-items: center; gap: 10px; color: #aaa; font-size: 14px; padding: 16px 0; }
+    .spinner { width: 22px; height: 22px; border: 3px solid #333; border-top-color: #cc0000; border-radius: 50%; animation: spin 0.8s linear infinite; flex-shrink: 0; }
+
+    /* Progress bar */
+    .progress-bar { width: 100%; height: 4px; background: #272727; border-radius: 2px; margin: 8px 0 4px; overflow: hidden; }
+    .progress-fill { height: 100%; background: #cc0000; border-radius: 2px; transition: width 0.3s ease; }
+    .progress-text { color: #aaa; font-size: 12px; margin-bottom: 12px; }
+
+    /* Mosaic */
+    .mosaic { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+    .mosaic a { display: block; }
+    .mosaic img { width: 130px; height: auto; border-radius: 4px; }
+
+    /* History */
+    .history-header { color: #aaa; font-size: 14px; font-weight: 600; padding: 10px 0; cursor: pointer; user-select: none; display: flex; justify-content: space-between; align-items: center; }
+    .history-header:hover { color: #f1f1f1; }
+    .history-list { max-height: 500px; overflow-y: auto; }
+    .history-item { padding: 10px 12px; border-left: 3px solid transparent; cursor: pointer; transition: all 0.15s; margin-bottom: 2px; border-radius: 0 6px 6px 0; }
+    .history-item:hover { background: #1a1a1a; border-left-color: #3f3f3f; }
+    .history-item.selected { background: #1a1a2e; border-left-color: #cc0000; }
+    .history-item .title { color: #f1f1f1; font-size: 13px; font-weight: 500; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .history-item .mode { color: #aaa; font-size: 11px; margin-top: 3px; }
+    .history-item .time { color: #555; font-size: 10px; margin-top: 2px; letter-spacing: 0.02em; }
+
+    /* Accordion */
+    .accordion-header { color: #aaa; font-size: 13px; cursor: pointer; padding: 8px 0; user-select: none; }
+    .accordion-header:hover { color: #f1f1f1; }
+
+    /* Model tag */
+    .model-tag { color: #888; font-size: 12px; margin: 12px 0 2px; }
+    .model-tag code { color: #ddd; background: #1f1f1f; border: 1px solid #303030; padding: 2px 7px; border-radius: 4px; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+    /* Error */
+    .error-msg { background: #2a1111; border: 1px solid #cc0000; border-radius: 6px; padding: 12px; color: #ff6666; margin: 12px 0; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" src="app.jsx"></script>
+</body>
+</html>
