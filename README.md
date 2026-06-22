@@ -28,7 +28,7 @@ Deployed as a Databricks App via DAB. Lakebase project also managed by DAB.
 
 **Model access**
 - At least one Gemini pay-per-token Foundation Model API endpoint available in the workspace. The app does not hardcode a model: at startup it lists the workspace's Gemini serving endpoints and picks one (preferring v3+, then the cheaper flash/lite tier, then the highest version), using the same endpoint for both video analysis and synthesis. Set the `GEMINI_MODEL` env var to pin a specific endpoint.
-- **Cross-geo processing enabled for Foundation Model APIs** (sometimes shown as "cross-geo routing"). Gemini is a partner-hosted model, and its video understanding fetches the YouTube URL server-side, so requests must be allowed to process across geos. This is an account/workspace AI setting and may require a support ticket to enable.
+- **Cross-geo processing enabled for Foundation Model APIs** (sometimes shown as "cross-geo routing"). Gemini is a partner-hosted model, and its video understanding fetches the YouTube URL server-side, so requests must be allowed to process across geos. This is enabled per workspace from the Databricks account console (account-level workspace settings), not via a support ticket.
 
 **Workspace capabilities**
 - **Lakebase Autoscale** enabled (for the history database).
