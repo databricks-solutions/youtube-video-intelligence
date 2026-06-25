@@ -179,6 +179,7 @@ const ThemeExplorerTab = () => {
   const [dateEnd, setDateEnd] = useState('');
   const [maxDur, setMaxDur] = useState('30');
   const [blacklist, setBlacklist] = useState('');
+  const [allowlist, setAllowlist] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(null);
@@ -254,7 +255,7 @@ const ThemeExplorerTab = () => {
     fetch('/api/analyze-theme', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(buildAnalyzeThemeBody(theme, dateStart, dateEnd, durCheck.value, blacklist)),
+      body: JSON.stringify(buildAnalyzeThemeBody(theme, dateStart, dateEnd, durCheck.value, blacklist, allowlist)),
     }).then(r => r.json()).then(data => {
       taskIdRef.current = data.task_id;
       streamEvents(data.task_id, 0);
@@ -310,6 +311,10 @@ const ThemeExplorerTab = () => {
               <div className="field">
                 <label>Exclude channels (one per line)</label>
                 <textarea value={blacklist} onChange={e => setBlacklist(e.target.value)} rows={2} />
+              </div>
+              <div className="field">
+                <label>Only these channels (one per line, leave blank for all)</label>
+                <textarea value={allowlist} onChange={e => setAllowlist(e.target.value)} rows={2} />
               </div>
             </div>
           )}

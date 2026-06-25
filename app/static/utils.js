@@ -214,13 +214,14 @@ function buildAnalyzeVideoBody(url, question) {
  * @param {string} blacklist
  * @returns {object}
  */
-function buildAnalyzeThemeBody(theme, dateStart, dateEnd, maxDurationMin, blacklist) {
+function buildAnalyzeThemeBody(theme, dateStart, dateEnd, maxDurationMin, blacklist, allowlist) {
   return {
     theme: (theme || "").trim(),
     date_start: dateStart || "",
     date_end: dateEnd || "",
     max_duration_min: maxDurationMin,
     blacklist: blacklist || "",
+    allowlist: allowlist || "",
   };
 }
 

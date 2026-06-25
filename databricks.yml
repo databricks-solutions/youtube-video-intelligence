@@ -7,13 +7,19 @@ variables:
     default: "sc"
 
 targets:
+  # No workspace host here on purpose. Pick the target workspace from the CLI:
+  #   databricks bundle deploy -t dev  -p <profile>   (or set DATABRICKS_HOST)
+  #   databricks bundle deploy -t prod -p <profile>
+  # Each target gets its own app and its own Lakebase project, because the
+  # resource names below include ${bundle.target}: sc-video-intel-dev vs
+  # sc-video-intel-prod. Point dev and prod at different profiles/workspaces
+  # (or the same one) as you like.
   dev:
     default: true
     mode: development
-    workspace:
-      # Set your workspace host here, or omit this line and provide it via the
-      # active CLI profile (databricks auth login) or the DATABRICKS_HOST env var.
-      host: https://YOUR-WORKSPACE.cloud.databricks.com
+
+  prod:
+    mode: production
 
 resources:
   apps:
@@ -35,5 +41,5 @@ resources:
   postgres_projects:
     video_intel_db:
       project_id: "${var.prefix}-video-intel-${bundle.target}"
-      display_name: "Video Intelligence History"
+      display_name: "Video Intelligence History (${bundle.target})"
       pg_version: "17"
