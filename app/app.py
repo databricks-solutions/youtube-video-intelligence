@@ -315,13 +315,30 @@ async def analyze_video_endpoint(
 # --- API: Theme Analysis (task-based) ---
 
 
+def _theme_search_queries(theme: str, allow: set[str] | None) -> list[str]:
+    """Build the YouTube search queries for a theme.
+
+    With a channel allowlist, scope the search to those channels. A broad theme
+    search (e.g. "crypto") returns YouTube's top global results, dominated by
+    channels specialised in that term; an allowed channel that is not a
+    topic-specialist will not appear there (regardless of its size), so a
+    post-filter alone would drop everything. Without an allowlist, one query.
+
+    Args:
+        theme: The (stripped) search theme.
+        allow: Lowercased allowed channel names, or None.
+
+    Returns:
+        One query per allowed channel, or a single theme query.
+    """
+    if allow:
+        return [f"{theme} {channel}" for channel in sorted(allow)]
+    return [theme]
+
+
 def _run_theme_analysis(
     task_id: str,
-    theme: str,
-    date_start_str: str,
-    date_end_str: str,
-    max_duration_min: int,
-    blacklist_text: str,
+    req: ThemeAnalysisRequest,
     user_email: str,
 ) -> None:
     """Background thread: search, filter, analyze videos, synthesize.
@@ -331,20 +348,34 @@ def _run_theme_analysis(
 
     Args:
         task_id: Task identifier for event storage.
-        theme: Search theme.
-        date_start_str: Optional start date filter (YYYY-MM-DD).
-        date_end_str: Optional end date filter (YYYY-MM-DD).
-        max_duration_min: Maximum video duration in minutes.
-        blacklist_text: Newline-separated channel blacklist.
+        req: Validated theme request (theme, date/duration filters, channel
+            allow/blocklists).
         user_email: Current user's email for history.
     """
 
     def emit(event: dict) -> None:
         _task_push(task_id, event)
 
+    theme = req.theme.strip()
+
     try:
         emit({"type": "progress", "pct": 2, "message": "Searching YouTube..."})
-        results = search_videos(theme, max_results=100)
+        allow = parse_blacklist(req.allowlist)
+        # Allowlist: scope to fewer results per channel (the channel's on-theme
+        # videos rank high in a scoped query) and run the channel searches in
+        # parallel. ponytail: bounded pool; fine for a handful of channels.
+        per_query = 20 if allow else 100
+        queries = _theme_search_queries(theme, allow)
+        results: list[VideoSearchResult] = []
+        seen: set[str] = set()
+        with ThreadPoolExecutor(max_workers=min(len(queries), 8)) as pool:
+            for batch in pool.map(
+                lambda q: search_videos(q, max_results=per_query), queries
+            ):
+                for video in batch:
+                    if video.url not in seen:
+                        seen.add(video.url)
+                        results.append(video)
         if not results:
             emit(
                 {"type": "error", "message": "No videos found. Try a different query."}
@@ -354,10 +385,11 @@ def _run_theme_analysis(
         emit({"type": "progress", "pct": 5, "message": "Filtering and ranking..."})
         filtered = filter_videos(
             results,
-            date_start=parse_date(date_start_str),
-            date_end=parse_date(date_end_str),
-            blacklist=parse_blacklist(blacklist_text),
-            max_duration_seconds=max_duration_min * 60 if max_duration_min else None,
+            date_start=parse_date(req.date_start),
+            date_end=parse_date(req.date_end),
+            blacklist=parse_blacklist(req.blacklist),
+            allowlist=allow,
+            max_duration_seconds=req.max_duration_min * 60 if req.max_duration_min else None,
         )
         if not filtered:
             emit(
@@ -620,15 +652,7 @@ async def analyze_theme_endpoint(
         _theme_tasks[task_id] = {"events": [], "done": False, "created": time.time()}
     threading.Thread(
         target=_run_theme_analysis,
-        args=(
-            task_id,
-            data.theme.strip(),
-            data.date_start,
-            data.date_end,
-            data.max_duration_min,
-            data.blacklist,
-            user,
-        ),
+        args=(task_id, data, user),
         daemon=True,
     ).start()
     return JSONResponse({"task_id": task_id})

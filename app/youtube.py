@@ -4,7 +4,6 @@ import json
 import logging
 import math
 import re
-import threading
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
@@ -13,9 +12,6 @@ from datetime import date, datetime
 import yt_dlp
 
 logger = logging.getLogger(__name__)
-
-# yt-dlp is not thread-safe; serialize all calls
-_ytdlp_lock = threading.Lock()
 
 
 def _parse_yt_date(yt_date: str) -> date | None:
@@ -62,9 +58,11 @@ def search_videos(query: str, max_results: int = 10) -> list[VideoSearchResult]:
         "no_warnings": True,
         "extract_flat": True,
         "default_search": "ytsearch",
+        # Own instance + cache off per call, so searches can run concurrently.
+        "cachedir": False,
     }
     try:
-        with _ytdlp_lock, yt_dlp.YoutubeDL(opts) as ydl:
+        with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(f"ytsearch{max_results}:{query}", download=False)
         entries = (info or {}).get("entries") or []
         results: list[VideoSearchResult] = []
@@ -159,6 +157,7 @@ def filter_videos(
     date_start: date | None = None,
     date_end: date | None = None,
     blacklist: set[str] | None = None,
+    allowlist: set[str] | None = None,
     max_duration_seconds: int | None = None,
 ) -> list[VideoSearchResult]:
     """Filter search results by date range, channel blacklist, and duration.
@@ -168,6 +167,8 @@ def filter_videos(
         date_start: Earliest upload date (inclusive).
         date_end: Latest upload date (inclusive).
         blacklist: Set of lowercased channel names to exclude.
+        allowlist: If set, only videos from these lowercased channel names are
+            kept; everything else is excluded.
         max_duration_seconds: Maximum video length in seconds. Videos longer
             than this are excluded.
 
@@ -177,6 +178,8 @@ def filter_videos(
     filtered: list[VideoSearchResult] = []
     for video in videos:
         if blacklist and video.channel.lower() in blacklist:
+            continue
+        if allowlist and video.channel.lower() not in allowlist:
             continue
         if max_duration_seconds and video.duration_seconds > max_duration_seconds:
             continue

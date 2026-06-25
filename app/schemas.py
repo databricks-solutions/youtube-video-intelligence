@@ -42,3 +42,4 @@ class ThemeAnalysisRequest(BaseModel):
     date_end: str = ""
     max_duration_min: int = 30
     blacklist: str = ""
+    allowlist: str = ""

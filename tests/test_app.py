@@ -111,6 +111,26 @@ def test_filter_videos_blacklist() -> None:
     assert result[0].channel == "GoodChannel"
 
 
+def test_filter_videos_allowlist() -> None:
+    """Channel allowlist keeps only matching channels (case-insensitive)."""
+    videos = [
+        _video(url="u1", title="V1", channel="WantedChannel"),
+        _video(url="u2", title="V2", channel="OtherChannel"),
+    ]
+    result = filter_videos(videos, allowlist={"wantedchannel"})
+    assert len(result) == 1
+    assert result[0].channel == "WantedChannel"
+
+
+def test_theme_search_queries() -> None:
+    """Allowlist scopes the search to one query per channel; else one broad query."""
+    from app import _theme_search_queries
+
+    assert _theme_search_queries("crypto", None) == ["crypto"]
+    assert _theme_search_queries("crypto", {"elxokas"}) == ["crypto elxokas"]
+    assert _theme_search_queries("ai", {"b", "a"}) == ["ai a", "ai b"]
+
+
 def test_filter_videos_date_range() -> None:
     """Date range filter includes only videos within bounds."""
     videos = [
