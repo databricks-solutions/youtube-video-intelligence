@@ -158,6 +158,7 @@ def filter_videos(
     date_end: date | None = None,
     blacklist: set[str] | None = None,
     allowlist: set[str] | None = None,
+    exclude_terms: set[str] | None = None,
     max_duration_seconds: int | None = None,
 ) -> list[VideoSearchResult]:
     """Filter search results by date range, channel blacklist, and duration.
@@ -169,6 +170,8 @@ def filter_videos(
         blacklist: Set of lowercased channel names to exclude.
         allowlist: If set, only videos from these lowercased channel names are
             kept; everything else is excluded.
+        exclude_terms: Lowercased terms; a video is dropped if any term appears
+            in its title (case-insensitive substring match).
         max_duration_seconds: Maximum video length in seconds. Videos longer
             than this are excluded.
 
@@ -180,6 +183,8 @@ def filter_videos(
         if blacklist and video.channel.lower() in blacklist:
             continue
         if allowlist and video.channel.lower() not in allowlist:
+            continue
+        if exclude_terms and any(t in video.title.lower() for t in exclude_terms):
             continue
         if max_duration_seconds and video.duration_seconds > max_duration_seconds:
             continue

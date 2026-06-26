@@ -389,6 +389,7 @@ def _run_theme_analysis(
             date_end=parse_date(req.date_end),
             blacklist=parse_blacklist(req.blacklist),
             allowlist=allow,
+            exclude_terms=parse_blacklist(req.exclude_terms),
             max_duration_seconds=req.max_duration_min * 60
             if req.max_duration_min
             else None,

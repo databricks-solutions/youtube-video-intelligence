@@ -181,6 +181,7 @@ const ThemeExplorerTab = () => {
   const [maxDur, setMaxDur] = useState('30');
   const [blacklist, setBlacklist] = useState('');
   const [allowlist, setAllowlist] = useState('');
+  const [excludeTerms, setExcludeTerms] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(null);
@@ -256,7 +257,7 @@ const ThemeExplorerTab = () => {
     fetch('/api/analyze-theme', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(buildAnalyzeThemeBody(theme, dateStart, dateEnd, durCheck.value, blacklist, allowlist, question)),
+      body: JSON.stringify(buildAnalyzeThemeBody(theme, dateStart, dateEnd, durCheck.value, blacklist, allowlist, question, excludeTerms)),
     }).then(r => r.json()).then(data => {
       taskIdRef.current = data.task_id;
       streamEvents(data.task_id, 0);
@@ -321,6 +322,10 @@ const ThemeExplorerTab = () => {
               <div className="field">
                 <label>Only these channels (one per line, leave blank for all)</label>
                 <textarea value={allowlist} onChange={e => setAllowlist(e.target.value)} rows={2} />
+              </div>
+              <div className="field">
+                <label>Exclude videos whose title contains (one per line)</label>
+                <textarea value={excludeTerms} onChange={e => setExcludeTerms(e.target.value)} placeholder="e.g. reveal trailer" rows={2} />
               </div>
             </div>
           )}

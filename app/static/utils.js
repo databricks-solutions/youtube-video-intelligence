@@ -214,7 +214,7 @@ function buildAnalyzeVideoBody(url, question) {
  * @param {string} blacklist
  * @returns {object}
  */
-function buildAnalyzeThemeBody(theme, dateStart, dateEnd, maxDurationMin, blacklist, allowlist, question) {
+function buildAnalyzeThemeBody(theme, dateStart, dateEnd, maxDurationMin, blacklist, allowlist, question, excludeTerms) {
   return {
     theme: (theme || "").trim(),
     question: question || "",
@@ -223,6 +223,7 @@ function buildAnalyzeThemeBody(theme, dateStart, dateEnd, maxDurationMin, blackl
     max_duration_min: maxDurationMin,
     blacklist: blacklist || "",
     allowlist: allowlist || "",
+    exclude_terms: excludeTerms || "",
   };
 }
 
