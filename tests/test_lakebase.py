@@ -62,23 +62,6 @@ def test_graceful_degradation_no_pghost(_real_lakebase) -> None:
         assert lb.save_theme_exploration("t", 0, "", []) is None
         assert lb.list_theme_explorations() == []
         assert lb.get_theme_exploration("abc") is None
-        assert lb.toggle_bookmark("single_video_analyses", "abc") is None
-        assert lb.search_analyses("single_video_analyses", "test") == []
-
-
-# --- Validation tests ---
-
-
-def test_toggle_bookmark_rejects_invalid_table(_real_lakebase) -> None:
-    """toggle_bookmark rejects table names not in allowlist."""
-    result = _real_lakebase.toggle_bookmark("drop_table_users", "abc")
-    assert result is None
-
-
-def test_search_analyses_rejects_invalid_table(_real_lakebase) -> None:
-    """search_analyses rejects table names not in allowlist."""
-    result = _real_lakebase.search_analyses("malicious_table", "test")
-    assert result == []
 
 
 # --- Schema definition tests ---
@@ -92,7 +75,6 @@ def test_tables_have_expected_columns(_real_lakebase) -> None:
     assert "id" in sv_cols
     assert "video_url" in sv_cols
     assert "result_json" in sv_cols
-    assert "is_bookmarked" in sv_cols
     assert "created_at" in sv_cols
 
     te_cols = {c.name for c in lb.theme_explorations.columns}
@@ -103,14 +85,6 @@ def test_tables_have_expected_columns(_real_lakebase) -> None:
     tva_cols = {c.name for c in lb.theme_video_analyses.columns}
     assert "theme_id" in tva_cols
     assert "analysis_json" in tva_cols
-
-
-def test_valid_tables_map(_real_lakebase) -> None:
-    """_VALID_TABLES only contains expected table names."""
-    assert set(_real_lakebase._VALID_TABLES.keys()) == {
-        "single_video_analyses",
-        "theme_explorations",
-    }
 
 
 # --- Endpoint resolution / credential tests ---

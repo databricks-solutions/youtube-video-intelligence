@@ -136,22 +136,6 @@ def get_video_metadata(url: str) -> VideoMetadata:
         raise RuntimeError(str(e)) from e
 
 
-def get_video_duration(url: str) -> int | None:
-    """Fetch duration in seconds for a single YouTube video.
-
-    Args:
-        url: YouTube video URL.
-
-    Returns:
-        Duration in seconds, or None if unavailable.
-    """
-    try:
-        meta = get_video_metadata(url)
-    except RuntimeError:
-        return None
-    return meta.duration_seconds if meta.duration_seconds else None
-
-
 def filter_videos(
     videos: list[VideoSearchResult],
     date_start: date | None = None,
