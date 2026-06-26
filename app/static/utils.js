@@ -196,12 +196,9 @@ function buildAnalyzeVideoBody(url, question) {
 }
 
 /**
- * Build the JSON body for POST /api/analyze-theme.
- * @param {string} theme
- * @param {string} dateStart
- * @param {string} dateEnd
- * @param {number} maxDurationMin - already-validated integer minutes
- * @param {string} blacklist
+ * Build the JSON body for POST /api/analyze-theme from the form fields.
+ * maxDurationMin is an already-validated integer; everything else is trimmed
+ * or defaulted server-side.
  * @returns {object}
  */
 function buildAnalyzeThemeBody(theme, dateStart, dateEnd, maxDurationMin, blacklist, allowlist, question, excludeTerms) {

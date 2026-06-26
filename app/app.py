@@ -99,6 +99,11 @@ def _json_default(obj: object) -> dict:
     raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
 
+def _sse(event: dict) -> str:
+    """Format an event dict as an SSE `data:` line."""
+    return f"data: {json.dumps(event, default=_json_default)}\n\n"
+
+
 async def sse_stream(q: queue.Queue) -> AsyncGenerator[str, None]:
     """Yield SSE events from a thread-safe queue until done or error.
 
@@ -108,15 +113,14 @@ async def sse_stream(q: queue.Queue) -> AsyncGenerator[str, None]:
     Yields:
         SSE-formatted data lines.
     """
-    keepalive_payload = json.dumps({"type": "keepalive"})
     while True:
         try:
             event = await asyncio.to_thread(q.get, timeout=2)
-            yield f"data: {json.dumps(event, default=_json_default)}\n\n"
+            yield _sse(event)
             if event.get("type") in ("done", "error"):
                 break
         except Exception:
-            yield f"data: {keepalive_payload}\n\n"
+            yield _sse({"type": "keepalive"})
 
 
 # --- Theme task storage ---
@@ -167,21 +171,20 @@ async def _task_sse_stream(task: dict, after: int) -> AsyncGenerator[str, None]:
         SSE-formatted data lines.
     """
     cursor = after
-    keepalive_payload = json.dumps({"type": "keepalive"})
     while True:
         events = task["events"]
         if cursor < len(events):
             while cursor < len(events):
                 event = events[cursor]
                 cursor += 1
-                yield f"data: {json.dumps(event, default=_json_default)}\n\n"
+                yield _sse(event)
                 if event.get("type") in ("done", "error"):
                     return
         elif task["done"]:
             return
         else:
             await asyncio.sleep(1)
-            yield f"data: {keepalive_payload}\n\n"
+            yield _sse({"type": "keepalive"})
 
 
 # --- API: Single Video Analysis (SSE) ---
@@ -685,11 +688,8 @@ async def theme_events(task_id: str, after: int = 0) -> StreamingResponse:
     """
     task = _theme_tasks.get(task_id)
     if not task:
-        error_payload = json.dumps(
-            {"type": "error", "message": "Task not found or expired."}
-        )
         return StreamingResponse(
-            iter([f"data: {error_payload}\n\n"]),
+            iter([_sse({"type": "error", "message": "Task not found or expired."})]),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
