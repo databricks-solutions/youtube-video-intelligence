@@ -190,7 +190,8 @@ def rank_videos(
     Scoring (each component normalized to 0-1):
     - Relevancy (40%): inverse of YouTube search rank position.
     - Views (35%): log-scaled view count.
-    - Recency (25%): days since upload, decayed over 2 years.
+    - Recency (25%): exponential decay with a 730-day time constant (1/e at
+      ~2 years).
 
     Args:
         videos: Filtered search results to rank.
@@ -205,7 +206,7 @@ def rank_videos(
     today = date.today()
     max_rank = max(v.search_rank for v in videos)
     max_log_views = max(math.log1p(v.view_count) for v in videos) or 1.0
-    decay_days = 730.0  # 2-year half-life
+    decay_days = 730.0  # 1/e decay constant (~37% weight at 2 years)
 
     scored: list[tuple[float, VideoSearchResult]] = []
     for video in videos:
