@@ -44,3 +44,4 @@ class ThemeAnalysisRequest(BaseModel):
     max_duration_min: int = 30
     blacklist: str = ""
     allowlist: str = ""
+    exclude_terms: str = ""

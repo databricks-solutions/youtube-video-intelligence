@@ -122,6 +122,17 @@ def test_filter_videos_allowlist() -> None:
     assert result[0].channel == "WantedChannel"
 
 
+def test_filter_videos_exclude_terms() -> None:
+    """Title-term exclusion drops matching videos (case-insensitive substring)."""
+    videos = [
+        _video(url="u1", title="MW Reveal Trailer", channel="A"),
+        _video(url="u2", title="MW gameplay breakdown", channel="B"),
+    ]
+    result = filter_videos(videos, exclude_terms={"reveal trailer"})
+    assert len(result) == 1
+    assert result[0].url == "u2"
+
+
 def test_theme_search_queries() -> None:
     """Allowlist scopes the search to one query per channel; else one broad query."""
     from app import _theme_search_queries
