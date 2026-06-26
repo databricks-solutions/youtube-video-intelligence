@@ -164,21 +164,13 @@ def analyze_video(
     """
     if model is None:
         model = resolve_gemini_model()
-    video_meta = types.VideoMetadata(fps=fps)
-    if end_offset:
-        video_meta = types.VideoMetadata(fps=fps, end_offset=end_offset)
-
+    video_meta = types.VideoMetadata(fps=fps, end_offset=end_offset)
     config = types.GenerateContentConfig(
         max_output_tokens=max_tokens,
         media_resolution=types.MediaResolution.MEDIA_RESOLUTION_LOW,
+        response_mime_type="application/json" if schema else None,
+        response_schema=schema,
     )
-    if schema is not None:
-        config = types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=schema,
-            max_output_tokens=max_tokens,
-            media_resolution=types.MediaResolution.MEDIA_RESOLUTION_LOW,
-        )
 
     for attempt in range(max_retries + 1):
         try:

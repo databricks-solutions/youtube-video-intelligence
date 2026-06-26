@@ -20,7 +20,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from formatting import (
-    format_summary_markdown,
+    format_summary_markdown_from_dict,
     format_video_detail_markdown,
     parse_blacklist,
     parse_date,
@@ -294,7 +294,8 @@ def _analyze_single_video(
         end_offset=end_offset,
     )
     if result:
-        return "summary", result.model_dump(), format_summary_markdown(result)
+        summary_data = result.model_dump()
+        return "summary", summary_data, format_summary_markdown_from_dict(summary_data)
     return "summary", {}, "Analysis failed. The video may be unavailable or too short."
 
 
@@ -535,22 +536,13 @@ def _analyze_videos_parallel(
             else:
                 err_msg = f" ({error})" if error else ""
                 failed.append(f"{video.title}{err_msg}")
-                if error and "REQUEST_LIMIT_EXCEEDED" in error:
-                    emit(
-                        {
-                            "type": "progress",
-                            "pct": 10 + int(80 * i / total),
-                            "message": f"Analyzed {i}/{total} videos "
-                            "(hitting workspace rate limits)...",
-                        }
-                    )
-                    continue
-            pct = 10 + int(80 * i / total)
+            rate_limited = bool(error and "REQUEST_LIMIT_EXCEEDED" in error)
+            suffix = " (hitting workspace rate limits)..." if rate_limited else "..."
             emit(
                 {
                     "type": "progress",
-                    "pct": pct,
-                    "message": f"Analyzed {i}/{total} videos...",
+                    "pct": 10 + int(80 * i / total),
+                    "message": f"Analyzed {i}/{total} videos{suffix}",
                 }
             )
 

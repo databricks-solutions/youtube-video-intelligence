@@ -57,7 +57,6 @@ def search_videos(query: str, max_results: int = 10) -> list[VideoSearchResult]:
         "quiet": True,
         "no_warnings": True,
         "extract_flat": True,
-        "default_search": "ytsearch",
         # Own instance + cache off per call, so searches can run concurrently.
         "cachedir": False,
     }
