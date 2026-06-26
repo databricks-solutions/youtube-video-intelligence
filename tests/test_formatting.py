@@ -7,13 +7,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
 
 from formatting import (
-    format_summary_markdown,
     format_summary_markdown_from_dict,
     format_video_detail_markdown,
     parse_blacklist,
     parse_date,
 )
-from schemas import VideoSummary
 
 # --- parse_date ---
 
@@ -66,26 +64,6 @@ def test_parse_blacklist_empty_string() -> None:
 def test_parse_blacklist_only_whitespace() -> None:
     """Returns None when all lines are whitespace."""
     assert parse_blacklist("  \n  \n") is None
-
-
-# --- format_summary_markdown ---
-
-
-def test_format_summary_markdown() -> None:
-    """Formats a VideoSummary into readable markdown."""
-    summary = VideoSummary(
-        title="Test",
-        main_topics=["AI", "ML"],
-        key_points=["Point A", "Point B"],
-        sentiment="positive",
-        tone="enthusiastic",
-    )
-    md = format_summary_markdown(summary)
-    assert "**Sentiment:** positive" in md
-    assert "**Tone:** enthusiastic" in md
-    assert "AI, ML" in md
-    assert "- Point A" in md
-    assert "- Point B" in md
 
 
 # --- format_summary_markdown_from_dict ---

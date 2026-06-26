@@ -6,8 +6,6 @@ trivially testable without mocking.
 
 from datetime import date
 
-from schemas import VideoSummary
-
 
 def parse_date(text: str) -> date | None:
     """Parse a YYYY-MM-DD string to a date object.
@@ -39,27 +37,6 @@ def parse_blacklist(text: str) -> set[str] | None:
         return None
     channels = {c.strip().lower() for c in text.splitlines() if c.strip()}
     return channels or None
-
-
-def format_summary_markdown(summary: VideoSummary) -> str:
-    """Format a VideoSummary into display markdown.
-
-    Args:
-        summary: Parsed video summary from Gemini.
-
-    Returns:
-        Markdown string with sentiment, topics, and key points.
-    """
-    lines = [
-        f"**Sentiment:** {summary.sentiment} | **Tone:** {summary.tone}",
-        "",
-        f"**Main Topics:** {', '.join(summary.main_topics)}",
-        "",
-        "**Key Points:**",
-    ]
-    for point in summary.key_points:
-        lines.append(f"- {point}")
-    return "\n".join(lines)
 
 
 def format_summary_markdown_from_dict(data: dict) -> str:
