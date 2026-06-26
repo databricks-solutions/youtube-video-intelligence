@@ -131,6 +131,35 @@ def test_theme_search_queries() -> None:
     assert _theme_search_queries("ai", {"b", "a"}) == ["ai a", "ai b"]
 
 
+def test_synthesize_answers_question() -> None:
+    """A question routes to a Q&A prompt and works even with a single video."""
+    from types import SimpleNamespace
+
+    import app as app_mod
+
+    captured: dict = {}
+
+    def fake_synth(_client: object, prompt: str) -> str:
+        captured["prompt"] = prompt
+        return "the answer"
+
+    one = {
+        "title": "T",
+        "channel": "C",
+        "analysis": SimpleNamespace(relevance_to_theme="r", key_points=["k"]),
+    }
+    with (
+        patch.object(app_mod, "get_gemini_client", return_value=object()),
+        patch.object(app_mod, "synthesize_text", side_effect=fake_synth),
+        patch.object(app_mod, "_sleep_with_progress"),
+    ):
+        out = app_mod._synthesize_analyses(
+            [one], "crypto", lambda e: None, question="who won?"
+        )
+    assert out == "the answer"
+    assert "who won?" in captured["prompt"]
+
+
 def test_filter_videos_date_range() -> None:
     """Date range filter includes only videos within bounds."""
     videos = [

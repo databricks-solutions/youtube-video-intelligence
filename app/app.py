@@ -389,7 +389,9 @@ def _run_theme_analysis(
             date_end=parse_date(req.date_end),
             blacklist=parse_blacklist(req.blacklist),
             allowlist=allow,
-            max_duration_seconds=req.max_duration_min * 60 if req.max_duration_min else None,
+            max_duration_seconds=req.max_duration_min * 60
+            if req.max_duration_min
+            else None,
         )
         if not filtered:
             emit(
@@ -408,7 +410,9 @@ def _run_theme_analysis(
 
         analyses, failed = _analyze_videos_parallel(emit, to_analyze, theme, n)
 
-        synthesis = _synthesize_analyses(analyses, theme, emit)
+        synthesis = _synthesize_analyses(
+            analyses, theme, emit, question=req.question.strip()
+        )
         mosaic = [
             {
                 "url": a["url"],
@@ -552,24 +556,27 @@ def _analyze_videos_parallel(
 
 
 def _synthesize_analyses(
-    analyses: list[dict], theme: str, emit: Callable[[dict], None]
+    analyses: list[dict],
+    theme: str,
+    emit: Callable[[dict], None],
+    question: str = "",
 ) -> str:
-    """Synthesize cross-video themes from individual analyses.
+    """Synthesize cross-video themes, or answer a question, from the analyses.
 
     Args:
         analyses: List of dicts with "analysis" ThemeAnalysis objects.
         theme: The search theme for context.
         emit: Callback to push SSE progress events.
+        question: If set, answer it across the videos instead of producing a
+            generic cross-video synthesis.
 
     Returns:
-        Synthesis markdown text.
+        Synthesis (or answer) markdown text.
     """
-    if len(analyses) < 2:
-        if analyses:
-            return (
-                "Only one video analyzed. Need at least two for cross-video synthesis."
-            )
+    if not analyses:
         return "No videos were successfully analyzed."
+    if not question and len(analyses) < 2:
+        return "Only one video analyzed. Need at least two for cross-video synthesis."
 
     emit({"type": "progress", "pct": 91, "message": "Rate limit cooldown..."})
     _sleep_with_progress(emit, seconds=10, pct_start=91, pct_end=94)
@@ -581,13 +588,20 @@ def _synthesize_analyses(
         f"Key points: {'; '.join(a['analysis'].key_points)}"
         for a in analyses
     )
-    synthesis_prompt = (
-        f'The following are analyses of YouTube videos about "{theme}":\n\n'
-        f"{summaries}\n\n"
-        "Synthesize the major themes, points of agreement and "
-        "disagreement, and overall sentiment across these videos. "
-        "Be concise."
-    )
+    intro = f'The following are analyses of YouTube videos about "{theme}":\n\n'
+    if question:
+        synthesis_prompt = (
+            f"{intro}{summaries}\n\n"
+            f"Answer this question using only these videos: {question}\n"
+            "If the videos do not address it, say so. Be concise."
+        )
+    else:
+        synthesis_prompt = (
+            f"{intro}{summaries}\n\n"
+            "Synthesize the major themes, points of agreement and "
+            "disagreement, and overall sentiment across these videos. "
+            "Be concise."
+        )
     for attempt in range(3):
         pct = 94 + attempt * 2
         emit(

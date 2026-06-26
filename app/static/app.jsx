@@ -175,6 +175,7 @@ const SingleVideoTab = () => {
 // --- Theme Explorer Tab ---
 const ThemeExplorerTab = () => {
   const [theme, setTheme] = useState('');
+  const [question, setQuestion] = useState('');
   const [dateStart, setDateStart] = useState('');
   const [dateEnd, setDateEnd] = useState('');
   const [maxDur, setMaxDur] = useState('30');
@@ -255,7 +256,7 @@ const ThemeExplorerTab = () => {
     fetch('/api/analyze-theme', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(buildAnalyzeThemeBody(theme, dateStart, dateEnd, durCheck.value, blacklist, allowlist)),
+      body: JSON.stringify(buildAnalyzeThemeBody(theme, dateStart, dateEnd, durCheck.value, blacklist, allowlist, question)),
     }).then(r => r.json()).then(data => {
       taskIdRef.current = data.task_id;
       streamEvents(data.task_id, 0);
@@ -287,6 +288,11 @@ const ThemeExplorerTab = () => {
           <div className="field">
             <label>Theme</label>
             <input value={theme} onChange={e => setTheme(e.target.value)} placeholder="e.g., audience reaction to our latest show launch" />
+          </div>
+
+          <div className="field">
+            <label>Question (optional)</label>
+            <textarea value={question} onChange={e => setQuestion(e.target.value)} placeholder="Ask a question to answer across the videos, or leave blank for a synthesis" rows={2} />
           </div>
 
           <div className="accordion-header" onClick={() => setShowFilters(!showFilters)}>
