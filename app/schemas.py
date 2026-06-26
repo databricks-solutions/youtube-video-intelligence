@@ -38,6 +38,7 @@ class ThemeAnalysisRequest(BaseModel):
     """Request body for theme exploration."""
 
     theme: str
+    question: str = ""
     date_start: str = ""
     date_end: str = ""
     max_duration_min: int = 30
