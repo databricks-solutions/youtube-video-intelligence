@@ -39,11 +39,12 @@ def test_theme_analysis_fields() -> None:
     """ThemeAnalysis accepts expected fields."""
     t = ThemeAnalysis(
         relevance_to_theme="high",
-        key_points=["point"],
+        claims=[{"claim": "point", "timestamp": "1:23"}],
         sentiment="mixed",
         creator_stance="neutral",
     )
     assert t.relevance_to_theme == "high"
+    assert t.claims[0].timestamp == "1:23"
 
 
 # ---------- youtube.py ----------
@@ -157,7 +158,11 @@ def test_synthesize_answers_question() -> None:
     one = {
         "title": "T",
         "channel": "C",
-        "analysis": SimpleNamespace(relevance_to_theme="r", key_points=["k"]),
+        "url": "https://www.youtube.com/watch?v=t",
+        "analysis": SimpleNamespace(
+            relevance_to_theme="r",
+            claims=[SimpleNamespace(claim="k", timestamp="1:00")],
+        ),
     }
     with (
         patch.object(app_mod, "get_gemini_client", return_value=object()),
