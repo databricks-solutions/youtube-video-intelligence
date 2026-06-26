@@ -128,16 +128,18 @@ def create_gemini_client() -> genai.Client:
     )
 
 
+_MAX_OUTPUT_TOKENS = 4096
+_VIDEO_FPS = 0.1
+_MAX_RETRIES = 2
+
+
 def analyze_video(
     client: genai.Client,
     url: str,
     prompt: str,
     schema: type[BaseModel] | None = None,
     model: str | None = None,
-    max_tokens: int = 4096,
-    fps: float = 0.1,
     end_offset: str | None = None,
-    max_retries: int = 2,
 ) -> BaseModel | str | None:
     """Send a YouTube video URL to Gemini and return analysis.
 
@@ -149,10 +151,7 @@ def analyze_video(
             raw text (freeform mode for Q&A).
         model: Gemini model name. If None, resolved at runtime via
             resolve_gemini_model().
-        max_tokens: Maximum output tokens.
-        fps: Frame rate for video sampling (lower = fewer tokens).
         end_offset: Optional end offset (e.g. "540s") to clip video.
-        max_retries: Number of retry attempts on transient errors.
 
     Note:
         Uses media_resolution=LOW (66 tokens/frame vs 258 default) and
@@ -164,41 +163,38 @@ def analyze_video(
     """
     if model is None:
         model = resolve_gemini_model()
-    video_meta = types.VideoMetadata(fps=fps, end_offset=end_offset)
     config = types.GenerateContentConfig(
-        max_output_tokens=max_tokens,
+        max_output_tokens=_MAX_OUTPUT_TOKENS,
         media_resolution=types.MediaResolution.MEDIA_RESOLUTION_LOW,
         response_mime_type="application/json" if schema else None,
         response_schema=schema,
     )
+    contents = types.Content(
+        role="user",
+        parts=[
+            types.Part(
+                file_data=types.FileData(file_uri=url, mime_type="video/*"),
+                video_metadata=types.VideoMetadata(
+                    fps=_VIDEO_FPS, end_offset=end_offset
+                ),
+            ),
+            types.Part(text=prompt),
+        ],
+    )
 
-    for attempt in range(max_retries + 1):
+    for attempt in range(_MAX_RETRIES + 1):
         try:
             response = client.models.generate_content(
-                model=model,
-                contents=types.Content(
-                    role="user",
-                    parts=[
-                        types.Part(
-                            file_data=types.FileData(
-                                file_uri=url,
-                                mime_type="video/*",
-                            ),
-                            video_metadata=video_meta,
-                        ),
-                        types.Part(text=prompt),
-                    ],
-                ),
-                config=config,
+                model=model, contents=contents, config=config
             )
             text = response.text or ""
             if not text.strip():
                 finish = _extract_finish_reason(response)
-                if attempt < max_retries:
+                if attempt < _MAX_RETRIES:
                     logger.warning(
                         "Empty response (attempt %d/%d, finish=%s) for %s, retrying",
                         attempt + 1,
-                        max_retries + 1,
+                        _MAX_RETRIES + 1,
                         finish,
                         url,
                     )
@@ -228,10 +224,10 @@ def analyze_video(
                     "INTERNAL_ERROR",
                 )
             )
-            if is_retryable and attempt < max_retries:
+            if is_retryable and attempt < _MAX_RETRIES:
                 wait = 3 * (attempt + 1)
                 logger.warning(
-                    "Retry %d/%d for %s: %s", attempt + 1, max_retries, url, e
+                    "Retry %d/%d for %s: %s", attempt + 1, _MAX_RETRIES, url, e
                 )
                 time.sleep(wait)
                 continue
@@ -262,7 +258,6 @@ def synthesize_text(
     client: genai.Client,
     prompt: str,
     model: str | None = None,
-    max_tokens: int = 4096,
 ) -> str:
     """Text-only Gemini call (no video). Used for cross-video synthesis and Q&A.
 
@@ -270,7 +265,6 @@ def synthesize_text(
         client: Authenticated Gemini client.
         prompt: The text prompt.
         model: Gemini model name. If None, resolved via resolve_gemini_model().
-        max_tokens: Maximum output tokens.
 
     Returns:
         Model response text, or empty string on failure.
@@ -281,7 +275,7 @@ def synthesize_text(
         response = client.models.generate_content(
             model=model,
             contents=prompt,
-            config=types.GenerateContentConfig(max_output_tokens=max_tokens),
+            config=types.GenerateContentConfig(max_output_tokens=_MAX_OUTPUT_TOKENS),
         )
         return response.text or ""
     except Exception as e:

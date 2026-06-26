@@ -282,7 +282,7 @@ def _analyze_single_video(
             f"based on its content:\n\n{question.strip()}"
         )
         result = analyze_video(
-            client, url=url, prompt=prompt, schema=None, fps=0.1, end_offset=end_offset
+            client, url=url, prompt=prompt, schema=None, end_offset=end_offset
         )
         result_json = {"text": result} if result else {}
         md = result or "Analysis failed."
@@ -293,7 +293,6 @@ def _analyze_single_video(
         url=url,
         prompt=SUMMARY_PROMPT,
         schema=VideoSummary,
-        fps=0.1,
         end_offset=end_offset,
     )
     if result:
@@ -516,7 +515,6 @@ def _analyze_videos_parallel(
                     url=video.url,
                     prompt=prompt,
                     schema=ThemeAnalysis,
-                    fps=0.1,
                     end_offset=end_offset,
                 )
                 return video, result, None
