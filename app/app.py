@@ -58,9 +58,10 @@ SUMMARY_PROMPT = (
 
 THEME_PROMPT_TEMPLATE = (
     "Watch this YouTube video. Analyze it specifically in the context of "
-    'this theme: "{theme}". Explain how relevant the video is to this '
-    "theme, list the key points the creator makes related to it, describe "
-    "the overall sentiment, and summarize the creator's stance."
+    'this theme: "{theme}". Explain how relevant the video is to this theme. '
+    "List the key claims the creator makes about it, and for each claim give "
+    "the approximate timestamp (M:SS) in the video where it is said or shown. "
+    "Describe the overall sentiment and summarize the creator's stance."
 )
 
 
@@ -584,24 +585,34 @@ def _synthesize_analyses(
 
     client = get_gemini_client()
     summaries = "\n\n".join(
-        f"**{a['title']}** ({a['channel']}): "
-        f"{a['analysis'].relevance_to_theme}. "
-        f"Key points: {'; '.join(a['analysis'].key_points)}"
+        f"VIDEO: {a['title']} ({a['channel']}) [{a['url']}]\n"
+        f"Relevance: {a['analysis'].relevance_to_theme}\n"
+        + "\n".join(f"  - [{c.timestamp}] {c.claim}" for c in a["analysis"].claims)
         for a in analyses
+    )
+    # Each claim above carries a timestamp and its video URL, so the model can
+    # cite the exact moment. ponytail: timestamps are approximate (frame
+    # sampling); raise fps in analyze_video for finer ones.
+    cite = (
+        "For every non-trivial claim you make, cite the source as a markdown "
+        "link to that moment, formatted [<video title> @ <M:SS>](<video url>&t=<seconds>s) "
+        "using the timestamps above (convert M:SS to seconds for t). Skip "
+        "citations for trivial or obvious statements."
     )
     intro = f'The following are analyses of YouTube videos about "{theme}":\n\n'
     if question:
         synthesis_prompt = (
             f"{intro}{summaries}\n\n"
             f"Answer this question using only these videos: {question}\n"
-            "If the videos do not address it, say so. Be concise."
+            f"{cite} Be thorough with citations for claims that bear on the "
+            "question. If the videos do not address it, say so. Be concise."
         )
     else:
         synthesis_prompt = (
             f"{intro}{summaries}\n\n"
             "Synthesize the major themes, points of agreement and "
             "disagreement, and overall sentiment across these videos. "
-            "Be concise."
+            f"{cite} Be concise."
         )
     for attempt in range(3):
         pct = 94 + attempt * 2

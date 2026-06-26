@@ -130,7 +130,7 @@ def test_synthesize_single_analysis() -> None:
             "url": "u1",
             "analysis": ThemeAnalysis(
                 relevance_to_theme="high",
-                key_points=["kp"],
+                claims=[{"claim": "kp", "timestamp": "0:10"}],
                 sentiment="pos",
                 creator_stance="pro",
             ),

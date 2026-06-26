@@ -1,6 +1,6 @@
 """Pydantic models for API requests and structured Gemini output."""
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # --- Gemini output schemas ---
 
@@ -15,11 +15,20 @@ class VideoSummary(BaseModel):
     tone: str
 
 
+class ThemeClaim(BaseModel):
+    """A claim made in a video, with where it appears."""
+
+    claim: str
+    timestamp: str = Field(
+        description="Approximate time the claim is made or shown, as M:SS or H:MM:SS."
+    )
+
+
 class ThemeAnalysis(BaseModel):
     """Per-video analysis scoped to a user-provided theme (Mode 2)."""
 
     relevance_to_theme: str
-    key_points: list[str]
+    claims: list[ThemeClaim]
     sentiment: str
     creator_stance: str
 
