@@ -10,39 +10,10 @@ from formatting import (
     format_summary_markdown,
     format_summary_markdown_from_dict,
     format_video_detail_markdown,
-    format_yt_date,
     parse_blacklist,
     parse_date,
 )
 from schemas import VideoSummary
-
-# --- format_yt_date ---
-
-
-def test_format_yt_date_valid() -> None:
-    """Converts YYYYMMDD to ISO format."""
-    assert format_yt_date("20240315") == "2024-03-15"
-
-
-def test_format_yt_date_empty() -> None:
-    """Returns empty string for empty input."""
-    assert format_yt_date("") == ""
-
-
-def test_format_yt_date_too_short() -> None:
-    """Returns empty string for truncated input."""
-    assert format_yt_date("2024") == ""
-
-
-def test_format_yt_date_invalid() -> None:
-    """Returns empty string for invalid date."""
-    assert format_yt_date("20241332") == ""
-
-
-def test_format_yt_date_none() -> None:
-    """Returns empty string for None input."""
-    assert format_yt_date("") == ""
-
 
 # --- parse_date ---
 

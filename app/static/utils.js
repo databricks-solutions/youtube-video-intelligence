@@ -44,16 +44,6 @@ function parseSSELine(line) {
 }
 
 /**
- * Check whether an SSE event is a terminal event (done or error).
- * @param {object} event - Parsed SSE event.
- * @returns {boolean} True if the stream should end.
- */
-function isTerminalEvent(event) {
-  if (!event || !event.type) return false;
-  return event.type === "done" || event.type === "error";
-}
-
-/**
  * Map a video history API item into a display-ready object.
  * @param {object} item - API response item from /api/history/videos.
  * @returns {object} Object with id, label, mode, time.
@@ -301,7 +291,6 @@ if (typeof module !== "undefined" && module.exports) {
     formatViews,
     formatDuration,
     parseSSELine,
-    isTerminalEvent,
     mapVideoHistoryItem,
     mapThemeHistoryItem,
     buildVideoMeta,

@@ -4,26 +4,9 @@ All functions are side-effect-free and operate on plain data, making them
 trivially testable without mocking.
 """
 
-from datetime import date, datetime
+from datetime import date
 
 from schemas import VideoSummary
-
-
-def format_yt_date(yt_date: str) -> str:
-    """Convert yt-dlp YYYYMMDD string to ISO YYYY-MM-DD.
-
-    Args:
-        yt_date: Date string in YYYYMMDD format from yt-dlp.
-
-    Returns:
-        ISO date string, or empty string if input is invalid.
-    """
-    if not yt_date or len(yt_date) != 8:
-        return ""
-    try:
-        return datetime.strptime(yt_date, "%Y%m%d").date().isoformat()
-    except ValueError:
-        return ""
 
 
 def parse_date(text: str) -> date | None:

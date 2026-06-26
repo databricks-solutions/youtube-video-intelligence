@@ -16,7 +16,6 @@ const {
   formatViews,
   formatDuration,
   parseSSELine,
-  isTerminalEvent,
   mapVideoHistoryItem,
   mapThemeHistoryItem,
   buildVideoMeta,
@@ -117,31 +116,6 @@ describe("parseSSELine", () => {
 
   it("returns null for non-data lines", () => {
     assert.equal(parseSSELine("event: message"), null);
-  });
-});
-
-// --- isTerminalEvent ---
-
-describe("isTerminalEvent", () => {
-  it("done is terminal", () => {
-    assert.equal(isTerminalEvent({ type: "done" }), true);
-  });
-
-  it("error is terminal", () => {
-    assert.equal(isTerminalEvent({ type: "error", message: "fail" }), true);
-  });
-
-  it("status is not terminal", () => {
-    assert.equal(isTerminalEvent({ type: "status" }), false);
-  });
-
-  it("progress is not terminal", () => {
-    assert.equal(isTerminalEvent({ type: "progress", pct: 50 }), false);
-  });
-
-  it("null and event-without-type are not terminal", () => {
-    assert.equal(isTerminalEvent(null), false);
-    assert.equal(isTerminalEvent({}), false);
   });
 });
 

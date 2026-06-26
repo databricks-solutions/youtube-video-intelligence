@@ -23,7 +23,6 @@ import time
 
 import sqlalchemy as sa
 from sqlalchemy import (
-    Boolean,
     Column,
     DateTime,
     ForeignKey,
@@ -58,7 +57,6 @@ single_video_analyses = Table(
     Column("question", Text),
     Column("result_type", String(20), nullable=False),
     Column("result_json", JSONB, nullable=False),
-    Column("is_bookmarked", Boolean, nullable=False, server_default="false"),
     Column(
         "created_at",
         DateTime(timezone=True),
@@ -75,7 +73,6 @@ theme_explorations = Table(
     Column("theme", Text, nullable=False),
     Column("video_count", Integer, nullable=False, server_default="0"),
     Column("synthesis", Text),
-    Column("is_bookmarked", Boolean, nullable=False, server_default="false"),
     Column(
         "created_at",
         DateTime(timezone=True),
@@ -314,7 +311,6 @@ def list_single_analyses(limit: int = 20, user_email: str = "") -> list[dict]:
                     single_video_analyses.c.channel,
                     single_video_analyses.c.question,
                     single_video_analyses.c.result_type,
-                    single_video_analyses.c.is_bookmarked,
                     single_video_analyses.c.created_at,
                 )
                 .where(single_video_analyses.c.user_email == user_email)
@@ -408,7 +404,6 @@ def list_theme_explorations(limit: int = 20, user_email: str = "") -> list[dict]
                     theme_explorations.c.id,
                     theme_explorations.c.theme,
                     theme_explorations.c.video_count,
-                    theme_explorations.c.is_bookmarked,
                     theme_explorations.c.created_at,
                 )
                 .where(theme_explorations.c.user_email == user_email)
@@ -454,91 +449,3 @@ def get_theme_exploration(theme_id: str, user_email: str = "") -> dict | None:
     except Exception as e:
         logger.error("Failed to get theme exploration %s: %s", theme_id, e)
         return None
-
-
-# --- Shared ---
-
-_VALID_TABLES = {
-    "single_video_analyses": single_video_analyses,
-    "theme_explorations": theme_explorations,
-}
-
-
-def toggle_bookmark(table_name: str, record_id: str) -> bool | None:
-    """Toggle is_bookmarked on a record. Returns new state or None."""
-    table = _VALID_TABLES.get(table_name)
-    if table is None:
-        return None
-    engine = _get_engine()
-    if engine is None:
-        return None
-    try:
-        with engine.begin() as conn:
-            stmt = (
-                table.update()
-                .where(table.c.id == record_id)
-                .values(is_bookmarked=~table.c.is_bookmarked)
-                .returning(table.c.is_bookmarked)
-            )
-            row = conn.execute(stmt).scalar()
-            return row
-    except Exception as e:
-        logger.error("Failed to toggle bookmark: %s", e)
-        return None
-
-
-def search_analyses(table_name: str, query: str, limit: int = 10) -> list[dict]:
-    """Full-text search across analyses using Postgres tsvector."""
-    table = _VALID_TABLES.get(table_name)
-    if table is None:
-        return []
-    engine = _get_engine()
-    if engine is None:
-        return []
-
-    if table_name == "single_video_analyses":
-        ts_col = sa.func.to_tsvector(
-            "english",
-            sa.func.coalesce(table.c.video_title, "")
-            + " "
-            + sa.cast(sa.func.coalesce(table.c.result_json, "{}"), Text),
-        )
-        columns = [
-            table.c.id,
-            table.c.video_url,
-            table.c.video_title,
-            table.c.channel,
-            table.c.question,
-            table.c.result_type,
-            table.c.is_bookmarked,
-            table.c.created_at,
-        ]
-    else:
-        ts_col = sa.func.to_tsvector(
-            "english",
-            sa.func.coalesce(table.c.theme, "")
-            + " "
-            + sa.func.coalesce(table.c.synthesis, ""),
-        )
-        columns = [
-            table.c.id,
-            table.c.theme,
-            table.c.video_count,
-            table.c.is_bookmarked,
-            table.c.created_at,
-        ]
-
-    try:
-        with engine.connect() as conn:
-            ts_query = sa.func.plainto_tsquery("english", query)
-            stmt = (
-                sa.select(*columns)
-                .where(ts_col.op("@@")(ts_query))
-                .order_by(table.c.created_at.desc())
-                .limit(limit)
-            )
-            rows = conn.execute(stmt).mappings().all()
-            return [dict(r) for r in rows]
-    except Exception as e:
-        logger.error("Failed to search %s: %s", table_name, e)
-        return []
