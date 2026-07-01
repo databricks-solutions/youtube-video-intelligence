@@ -418,6 +418,30 @@ def test_analyze_video_retries_on_429() -> None:
     assert call_count == 2
 
 
+def test_analyze_video_falls_back_when_model_cannot_serve() -> None:
+    """A 502 / INTERNAL_ERROR on one model falls back to the next candidate."""
+    import gemini as gem
+
+    expected = SimpleSchema(title="ok", score=1.0)
+    tried: list[str] = []
+
+    def gen(**kwargs: object) -> _FakeResponse:
+        tried.append(kwargs["model"])
+        if kwargs["model"] == "bad-model":
+            raise RuntimeError("502 None. {'error_code': 'INTERNAL_ERROR'}")
+        return _FakeResponse(expected.model_dump_json())
+
+    client = MagicMock()
+    client.models.generate_content.side_effect = gen
+    with patch.object(
+        gem, "gemini_candidates", return_value=["bad-model", "good-model"]
+    ):
+        result = gem.analyze_video(client, url="u", prompt="p", schema=SimpleSchema)
+
+    assert isinstance(result, SimpleSchema)
+    assert tried == ["bad-model", "good-model"]
+
+
 def test_synthesize_text() -> None:
     """synthesize_text returns model response text."""
     from gemini import synthesize_text
@@ -451,8 +475,8 @@ def test_model_version_parsing() -> None:
     assert _model_version("databricks-claude-sonnet") == (0, 0)
 
 
-def test_select_model_prefers_flash_v3() -> None:
-    """_select_model picks the highest-version flash/lite model that is v3+."""
+def test_select_model_prefers_2_5_flash() -> None:
+    """The 2.5 tier (video-capable on FMAPI) wins, flash over pro within it."""
     from gemini import _select_model
 
     names = [
@@ -461,30 +485,30 @@ def test_select_model_prefers_flash_v3() -> None:
         "databricks-gemini-2-5-flash",
         "databricks-gemini-2-5-pro",
     ]
-    assert _select_model(names) == "databricks-gemini-3-5-flash"
+    assert _select_model(names) == "databricks-gemini-2-5-flash"
 
 
-def test_select_model_prefers_flash_over_pro() -> None:
-    """Flash/lite tier wins over pro even when pro has a higher version."""
+def test_select_model_prefers_2_5_over_v3_pro() -> None:
+    """2.5 is preferred even over a higher-version pro model."""
+    from gemini import _select_model
+
+    names = ["databricks-gemini-3-5-pro", "databricks-gemini-2-5-flash"]
+    assert _select_model(names) == "databricks-gemini-2-5-flash"
+
+
+def test_select_model_flash_over_pro_without_2_5() -> None:
+    """Without a 2.5 model, the flash tier wins, then newest version."""
     from gemini import _select_model
 
     names = ["databricks-gemini-3-1-pro", "databricks-gemini-3-flash"]
     assert _select_model(names) == "databricks-gemini-3-flash"
 
 
-def test_select_model_falls_back_to_pro_when_no_flash() -> None:
-    """When no flash/lite v3+ exists, the highest v3+ model is used."""
+def test_select_model_drops_image_models() -> None:
+    """Image-generation endpoints are never selected."""
     from gemini import _select_model
 
-    names = ["databricks-gemini-3-5-pro", "databricks-gemini-2-5-flash"]
-    assert _select_model(names) == "databricks-gemini-3-5-pro"
-
-
-def test_select_model_falls_back_when_no_v3() -> None:
-    """With no v3+ model, the newest available Gemini is used."""
-    from gemini import _select_model
-
-    names = ["databricks-gemini-2-5-flash", "databricks-gemini-2-0-flash"]
+    names = ["databricks-gemini-3-pro-image", "databricks-gemini-2-5-flash"]
     assert _select_model(names) == "databricks-gemini-2-5-flash"
 
 

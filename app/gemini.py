@@ -18,13 +18,16 @@ logger = logging.getLogger(__name__)
 
 # Foundation Model API provisions different Gemini models per workspace and
 # region, so the model is resolved at runtime instead of hardcoded. Selection
-# rule: among Gemini endpoints of version 3 or newer, prefer the cheaper
-# flash/lite tier, then the highest version; fall back to the newest Gemini of
-# any version if none are v3+. Set GEMINI_MODEL to pin an explicit endpoint.
+# rule: prefer the Gemini 2.5 tier (it reliably serves video on FMAPI, whereas
+# the newer 3.x endpoints currently 502 on video input), then the flash/lite
+# tier, then the newest version. Everything else stays as a fallback. Set
+# GEMINI_MODEL to pin an explicit endpoint.
 GEMINI_MODEL_ENV = "GEMINI_MODEL"
-_MIN_MAJOR_VERSION = 3
+# Video-capable tier on FMAPI today; revisit when 3.x serves video.
+_PREFERRED_VERSION = (2, 5)
 
-_resolved_model: str | None = None
+_working_model: str | None = None  # last model that served a request OK
+_endpoint_names: list[str] | None = None
 _model_lock = threading.Lock()
 
 
@@ -43,73 +46,87 @@ def _model_version(name: str) -> tuple[int, int]:
     return (int(match.group(1)), int(match.group(2) or 0))
 
 
-def _select_model(names: list[str]) -> str | None:
-    """Choose the best Gemini model from available endpoint names.
-
-    Prefers v3+ models, the flash/lite tier (cheaper), then highest version.
-    Falls back to the newest available Gemini of any version if none are v3+.
-
-    Args:
-        names: Available Gemini serving-endpoint names.
-
-    Returns:
-        The chosen endpoint name, or None if no Gemini endpoint is available.
-    """
-    if not names:
-        return None
-    modern = [n for n in names if _model_version(n)[0] >= _MIN_MAJOR_VERSION]
-    if modern:
-        return max(
-            modern,
-            key=lambda n: (("flash" in n or "lite" in n), _model_version(n)),
-        )
-    newest = max(names, key=_model_version)
-    logger.warning(
-        "No Gemini v%d+ endpoint found; falling back to %s",
-        _MIN_MAJOR_VERSION,
-        newest,
+def _rank_models(names: list[str]) -> list[str]:
+    """Rank Gemini endpoints best-first: the 2.5 tier first (it serves video on
+    FMAPI; 3.x endpoints currently 502 on video), then the flash/lite tier, then
+    newest version. Image-generation endpoints are dropped (they cannot analyze
+    video or text). Everything else stays in the list as a fallback."""
+    return sorted(
+        [n for n in names if "image" not in n],
+        key=lambda n: (
+            _model_version(n) == _PREFERRED_VERSION,
+            "flash" in n or "lite" in n,
+            _model_version(n),
+        ),
+        reverse=True,
     )
-    return newest
 
 
-def resolve_gemini_model() -> str:
-    """Resolve the Gemini endpoint to use, cached for the process.
+def _select_model(names: list[str]) -> str | None:
+    """The single best Gemini model from the given names, or None if empty."""
+    ranked = _rank_models(names)
+    return ranked[0] if ranked else None
 
-    Honors the GEMINI_MODEL env override; otherwise lists the workspace's
-    Gemini serving endpoints and applies the selection rule.
 
-    Returns:
-        A Gemini serving-endpoint name.
-
-    Raises:
-        RuntimeError: If no model can be resolved (no override, and no Gemini
-            endpoints could be listed).
-    """
-    global _resolved_model
-    override = os.environ.get(GEMINI_MODEL_ENV)
-    if override:
-        return override
+def _list_gemini_endpoints() -> list[str]:
+    """List the workspace's Gemini serving-endpoint names, cached per process."""
+    global _endpoint_names
     with _model_lock:
-        if _resolved_model is None:
+        if _endpoint_names is None:
             try:
                 w = WorkspaceClient()
-                names = [
+                _endpoint_names = [
                     e.name
                     for e in w.serving_endpoints.list()
                     if e.name and "gemini" in e.name.lower()
                 ]
             except Exception as exc:
                 logger.error("Failed to list serving endpoints: %s", exc)
-                names = []
-            chosen = _select_model(names)
-            if not chosen:
-                raise RuntimeError(
-                    "No Gemini serving endpoint available. Set the "
-                    f"{GEMINI_MODEL_ENV} env var to specify one."
-                )
-            logger.info("Resolved Gemini model: %s", chosen)
-            _resolved_model = chosen
-        return _resolved_model
+                _endpoint_names = []
+        return _endpoint_names
+
+
+def gemini_candidates() -> list[str]:
+    """Ordered Gemini models to try, best-first.
+
+    Honors the GEMINI_MODEL override (returns just that). Otherwise ranks the
+    workspace's Gemini endpoints (v3+ / flash preferred) but keeps the rest as
+    fallbacks, so analyze_video can move on when a preferred model cannot serve
+    a request. A model that has served a request is floated to the front.
+    """
+    override = os.environ.get(GEMINI_MODEL_ENV)
+    if override:
+        return [override]
+    ranked = _rank_models(_list_gemini_endpoints())
+    if _working_model and _working_model in ranked:
+        ranked = [_working_model] + [n for n in ranked if n != _working_model]
+    return ranked
+
+
+def resolve_gemini_model() -> str:
+    """Resolve a single Gemini model (the top candidate). Honors GEMINI_MODEL.
+
+    Raises:
+        RuntimeError: If no Gemini endpoint is available.
+    """
+    candidates = gemini_candidates()
+    if not candidates:
+        raise RuntimeError(
+            "No Gemini serving endpoint available. Set the "
+            f"{GEMINI_MODEL_ENV} env var to specify one."
+        )
+    return candidates[0]
+
+
+def _is_retryable(err: str) -> bool:
+    """Rate-limit style errors worth retrying on the same model."""
+    return any(s in err for s in ("429", "RESOURCE_EXHAUSTED"))
+
+
+def _remember_model(name: str) -> None:
+    """Float a model that served OK to the front of future candidate lists."""
+    global _working_model
+    _working_model = name
 
 
 def create_gemini_client() -> genai.Client:
@@ -162,8 +179,11 @@ def analyze_video(
         Parsed Pydantic model (if schema provided), raw text string (if
         schema is None), or None on failure.
     """
-    if model is None:
-        model = resolve_gemini_model()
+    models = [model] if model else gemini_candidates()
+    if not models:
+        raise RuntimeError(
+            f"No Gemini serving endpoint available. Set the {GEMINI_MODEL_ENV} env var."
+        )
     video_meta = types.VideoMetadata(fps=fps, end_offset=end_offset)
     config = types.GenerateContentConfig(
         max_output_tokens=max_tokens,
@@ -171,72 +191,72 @@ def analyze_video(
         response_mime_type="application/json" if schema else None,
         response_schema=schema,
     )
+    contents = types.Content(
+        role="user",
+        parts=[
+            types.Part(
+                file_data=types.FileData(file_uri=url, mime_type="video/*"),
+                video_metadata=video_meta,
+            ),
+            types.Part(text=prompt),
+        ],
+    )
 
-    for attempt in range(max_retries + 1):
-        try:
-            response = client.models.generate_content(
-                model=model,
-                contents=types.Content(
-                    role="user",
-                    parts=[
-                        types.Part(
-                            file_data=types.FileData(
-                                file_uri=url,
-                                mime_type="video/*",
-                            ),
-                            video_metadata=video_meta,
-                        ),
-                        types.Part(text=prompt),
-                    ],
-                ),
-                config=config,
-            )
-            text = response.text or ""
-            if not text.strip():
-                finish = _extract_finish_reason(response)
-                if attempt < max_retries:
+    # Try each candidate model; a 502/INTERNAL_ERROR means that model cannot
+    # serve the request (e.g. v3 flash endpoints 502 on video), so fall back to
+    # the next one rather than failing the whole analysis.
+    for candidate in models:
+        for attempt in range(max_retries + 1):
+            try:
+                response = client.models.generate_content(
+                    model=candidate, contents=contents, config=config
+                )
+                text = response.text or ""
+                if not text.strip():
+                    finish = _extract_finish_reason(response)
+                    if attempt < max_retries:
+                        logger.warning(
+                            "Empty response (finish=%s) from %s for %s, retrying",
+                            finish,
+                            candidate,
+                            url,
+                        )
+                        time.sleep(3 * (attempt + 1))
+                        continue
                     logger.warning(
-                        "Empty response (attempt %d/%d, finish=%s) for %s, retrying",
-                        attempt + 1,
-                        max_retries + 1,
+                        "Empty response (finish=%s) from %s for %s; trying next model",
                         finish,
+                        candidate,
                         url,
+                    )
+                    break
+                _remember_model(candidate)
+                if schema is not None:
+                    return schema.model_validate_json(text)
+                return text
+            except Exception as e:
+                err = str(e)
+                if _is_retryable(err) and attempt < max_retries:
+                    logger.warning(
+                        "Retry %d/%d on %s for %s: %s",
+                        attempt + 1,
+                        max_retries,
+                        candidate,
+                        url,
+                        err[:120],
                     )
                     time.sleep(3 * (attempt + 1))
                     continue
+                # This model failed (e.g. 502 on video, or a 400 from a model
+                # that cannot take video); fall back to the next candidate.
                 logger.warning(
-                    "Empty response from Gemini (finish=%s) for %s after %d attempts",
-                    finish,
+                    "%s failed for %s (%s); trying next model",
+                    candidate,
                     url,
-                    attempt + 1,
+                    err[:120],
                 )
-                return None
-            if schema is not None:
-                return schema.model_validate_json(text)
-            return text
-        except Exception as e:
-            err_str = str(e)
-            if "502" in err_str:
-                logger.warning("Skipping (likely unavailable video): %s", url)
-                return None
-            is_retryable = any(
-                s in err_str
-                for s in (
-                    "429",
-                    "RESOURCE_EXHAUSTED",
-                    "UNAVAILABLE",
-                    "INTERNAL_ERROR",
-                )
-            )
-            if is_retryable and attempt < max_retries:
-                wait = 3 * (attempt + 1)
-                logger.warning(
-                    "Retry %d/%d for %s: %s", attempt + 1, max_retries, url, e
-                )
-                time.sleep(wait)
-                continue
-            logger.error("Failed after %d attempts: %s: %s", attempt + 1, url, e)
-            return None
+                break
+    logger.error("All candidate models failed for %s", url)
     return None
 
 
