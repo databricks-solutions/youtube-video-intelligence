@@ -26,7 +26,6 @@ GEMINI_MODEL_ENV = "GEMINI_MODEL"
 # Video-capable tier on FMAPI today; revisit when 3.x serves video.
 _PREFERRED_VERSION = (2, 5)
 
-_working_model: str | None = None  # last model that served a request OK
 _endpoint_names: list[str] | None = None
 _model_lock = threading.Lock()
 
@@ -62,12 +61,6 @@ def _rank_models(names: list[str]) -> list[str]:
     )
 
 
-def _select_model(names: list[str]) -> str | None:
-    """The single best Gemini model from the given names, or None if empty."""
-    ranked = _rank_models(names)
-    return ranked[0] if ranked else None
-
-
 def _list_gemini_endpoints() -> list[str]:
     """List the workspace's Gemini serving-endpoint names, cached per process."""
     global _endpoint_names
@@ -87,20 +80,13 @@ def _list_gemini_endpoints() -> list[str]:
 
 
 def gemini_candidates() -> list[str]:
-    """Ordered Gemini models to try, best-first.
-
-    Honors the GEMINI_MODEL override (returns just that). Otherwise ranks the
-    workspace's Gemini endpoints (v3+ / flash preferred) but keeps the rest as
-    fallbacks, so analyze_video can move on when a preferred model cannot serve
-    a request. A model that has served a request is floated to the front.
-    """
+    """Ordered Gemini models to try, best-first (see _rank_models). Honors the
+    GEMINI_MODEL override. analyze_video walks the list, falling back when a
+    preferred model cannot serve a request."""
     override = os.environ.get(GEMINI_MODEL_ENV)
     if override:
         return [override]
-    ranked = _rank_models(_list_gemini_endpoints())
-    if _working_model and _working_model in ranked:
-        ranked = [_working_model] + [n for n in ranked if n != _working_model]
-    return ranked
+    return _rank_models(_list_gemini_endpoints())
 
 
 def resolve_gemini_model() -> str:
@@ -121,12 +107,6 @@ def resolve_gemini_model() -> str:
 def _is_retryable(err: str) -> bool:
     """Rate-limit style errors worth retrying on the same model."""
     return any(s in err for s in ("429", "RESOURCE_EXHAUSTED"))
-
-
-def _remember_model(name: str) -> None:
-    """Float a model that served OK to the front of future candidate lists."""
-    global _working_model
-    _working_model = name
 
 
 def create_gemini_client() -> genai.Client:
@@ -230,7 +210,6 @@ def analyze_video(
                         url,
                     )
                     break
-                _remember_model(candidate)
                 if schema is not None:
                     return schema.model_validate_json(text)
                 return text
