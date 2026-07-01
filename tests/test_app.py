@@ -475,9 +475,9 @@ def test_model_version_parsing() -> None:
     assert _model_version("databricks-claude-sonnet") == (0, 0)
 
 
-def test_select_model_prefers_2_5_flash() -> None:
-    """The 2.5 tier (video-capable on FMAPI) wins, flash over pro within it."""
-    from gemini import _select_model
+def test_rank_models_prefers_2_5_flash() -> None:
+    """The 2.5 tier (video-capable on FMAPI) ranks first, flash over pro."""
+    from gemini import _rank_models
 
     names = [
         "databricks-gemini-3-5-flash",
@@ -485,38 +485,40 @@ def test_select_model_prefers_2_5_flash() -> None:
         "databricks-gemini-2-5-flash",
         "databricks-gemini-2-5-pro",
     ]
-    assert _select_model(names) == "databricks-gemini-2-5-flash"
+    assert _rank_models(names)[0] == "databricks-gemini-2-5-flash"
 
 
-def test_select_model_prefers_2_5_over_v3_pro() -> None:
+def test_rank_models_prefers_2_5_over_v3_pro() -> None:
     """2.5 is preferred even over a higher-version pro model."""
-    from gemini import _select_model
+    from gemini import _rank_models
 
     names = ["databricks-gemini-3-5-pro", "databricks-gemini-2-5-flash"]
-    assert _select_model(names) == "databricks-gemini-2-5-flash"
+    assert _rank_models(names)[0] == "databricks-gemini-2-5-flash"
 
 
-def test_select_model_flash_over_pro_without_2_5() -> None:
+def test_rank_models_flash_over_pro_without_2_5() -> None:
     """Without a 2.5 model, the flash tier wins, then newest version."""
-    from gemini import _select_model
+    from gemini import _rank_models
 
     names = ["databricks-gemini-3-1-pro", "databricks-gemini-3-flash"]
-    assert _select_model(names) == "databricks-gemini-3-flash"
+    assert _rank_models(names)[0] == "databricks-gemini-3-flash"
 
 
-def test_select_model_drops_image_models() -> None:
-    """Image-generation endpoints are never selected."""
-    from gemini import _select_model
+def test_rank_models_drops_image_models() -> None:
+    """Image-generation endpoints are dropped entirely."""
+    from gemini import _rank_models
 
-    names = ["databricks-gemini-3-pro-image", "databricks-gemini-2-5-flash"]
-    assert _select_model(names) == "databricks-gemini-2-5-flash"
+    ranked = _rank_models(
+        ["databricks-gemini-3-pro-image", "databricks-gemini-2-5-flash"]
+    )
+    assert ranked == ["databricks-gemini-2-5-flash"]
 
 
-def test_select_model_empty_returns_none() -> None:
-    """_select_model returns None when no Gemini endpoints are available."""
-    from gemini import _select_model
+def test_rank_models_empty() -> None:
+    """_rank_models returns an empty list when no endpoints are available."""
+    from gemini import _rank_models
 
-    assert _select_model([]) is None
+    assert _rank_models([]) == []
 
 
 def test_resolve_gemini_model_env_override() -> None:
