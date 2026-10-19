@@ -100,7 +100,8 @@ The aim is turnkey: clone, set your workspace/prefix, `bundle deploy` + `run`, w
 - `schema=None` on `analyze_video()` returns raw text (freeform Q&A mode)
 - Model selection (`_rank_models` in `app/gemini.py`): newest lite endpoint first, then newest of the rest; image endpoints dropped. Video analysis falls back down the list on errors. `GEMINI_MODEL` pins one. Keep README and `docs/demo_description.md` in sync with this rule.
 - Video token control: FPS=0.1, end_offset computed from yt-dlp duration minus 60s
-- yt-dlp `extract_flat=True` for search (metadata only, no download). Does NOT return upload_date.
+- yt-dlp `extract_flat=True` for search (metadata only, no download). It returns no upload date unless `search_videos(approximate_dates=True)`, which turns on yt-dlp's `youtubetab:approximate_date` to parse the page's "4mo ago" text (needs yt-dlp >= 2026.8.19 for YouTube's short format). Theme Explorer enables it only when a date filter is set. Per-video lookups for exact dates are bot-blocked on Databricks compute, so don't add them.
+- Theme Explorer search query: with a question, `_search_query` has the lite Gemini model condense theme + question into a short query, keeping the user's terms verbatim (it otherwise "corrects" names newer than its knowledge). Falls back to the bare theme.
 - `rank_videos()` scores by: relevancy 40%, views 35% (log-scaled), recency 25%
 - Date parsing: use `datetime.strptime(yt_date, "%Y%m%d")` for yt-dlp dates, `date.fromisoformat()` for ISO dates. No manual string slicing.
 - Lakebase connection via SQLAlchemy + psycopg2 with OAuth token refresh (45-min TTL)
@@ -112,7 +113,7 @@ The aim is turnkey: clone, set your workspace/prefix, `bundle deploy` + `run`, w
 
 ## Known Issues
 
-- yt-dlp `extract_flat=True` does NOT return `upload_date`. Only views and duration are available from search results.
+- Search upload dates are approximate ("4mo ago" granularity, e.g. ~10 days off for a 4-month-old video), so date filters are fuzzy near the boundary. Videos with no parsable date pass date filters.
 - oEmbed for single video metadata only returns title/channel (no views, duration, description) because full yt-dlp extraction gets blocked by YouTube bot detection on DBX container. Metadata fetch is non-fatal: if it fails (e.g. egress blocked), single-video analysis still proceeds with a fallback title because the Gemini FMAPI fetches the video server-side.
 - FMAPI rate limits: parallel Gemini calls (top 3 per theme) can pressure the workspace token budget. Global semaphore + synthesis retry mitigates but doesn't eliminate.
 - Serverless egress: a restricted network policy blocks pypi.org (build) and youtube.com (runtime). See "Deploying to a New Workspace". Network-policy changes require an app stop/start to take effect.

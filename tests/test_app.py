@@ -354,6 +354,68 @@ def test_search_videos_mock() -> None:
     assert results[1].search_rank == 2  # None entry at index 1 is skipped
 
 
+def _mock_ydl(fake_info: dict) -> tuple[MagicMock, MagicMock]:
+    """Patchable YoutubeDL class returning fake_info from extract_info."""
+    mock_ydl = MagicMock()
+    mock_ydl.extract_info.return_value = fake_info
+    mock_ydl.__enter__ = MagicMock(return_value=mock_ydl)
+    mock_ydl.__exit__ = MagicMock(return_value=False)
+    return MagicMock(return_value=mock_ydl), mock_ydl
+
+
+def test_search_videos_approximate_dates() -> None:
+    """approximate_dates turns on yt-dlp's date parsing and maps its timestamp."""
+    fake_info = {
+        "entries": [
+            {"id": "a", "title": "A", "timestamp": 1781913600},  # 2026-06-20 UTC
+            {"id": "b", "title": "B", "upload_date": "20250310", "timestamp": 1},
+            {"id": "c", "title": "C"},
+        ]
+    }
+    ydl_cls, _ = _mock_ydl(fake_info)
+    with patch("youtube.yt_dlp.YoutubeDL", ydl_cls):
+        from youtube import search_videos
+
+        results = search_videos("q", max_results=3, approximate_dates=True)
+
+    opts = ydl_cls.call_args.args[0]
+    assert opts["extractor_args"] == {"youtubetab": {"approximate_date": ["true"]}}
+    assert [r.upload_date for r in results] == ["20260620", "20250310", ""]
+
+
+def test_search_videos_no_date_parsing_by_default() -> None:
+    """Without approximate_dates, yt-dlp's date parsing stays off."""
+    ydl_cls, _ = _mock_ydl({"entries": [{"id": "a"}]})
+    with patch("youtube.yt_dlp.YoutubeDL", ydl_cls):
+        from youtube import search_videos
+
+        search_videos("q", max_results=1)
+
+    assert "extractor_args" not in ydl_cls.call_args.args[0]
+
+
+def test_theme_search_fetches_dates_only_with_date_filter() -> None:
+    """Theme search asks for upload dates only when a date filter is set."""
+    from schemas import ThemeAnalysisRequest
+
+    import app
+
+    for date_start, date_end, expected in (
+        ("", "", False),
+        ("2026-03-03", "", True),
+        ("", "2026-09-01", True),
+    ):
+        req = ThemeAnalysisRequest(
+            theme="Sea of Thieves", date_start=date_start, date_end=date_end
+        )
+        with (
+            patch.object(app, "search_videos", return_value=[]) as search,
+            patch.object(app, "_task_push"),
+        ):
+            app._run_theme_analysis("task", req, "u@databricks.com")
+        assert search.call_args.kwargs["approximate_dates"] is expected
+
+
 # ---------- gemini.py ----------
 
 

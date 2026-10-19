@@ -472,12 +472,17 @@ def _run_theme_analysis(
         # videos rank high in a scoped query) and run the channel searches in
         # parallel. ponytail: bounded pool; fine for a handful of channels.
         per_query = 20 if allow else 100
+        # Upload dates only matter for a date filter (they also feed recency).
+        want_dates = bool(req.date_start or req.date_end)
         queries = _theme_search_queries(search_query, allow)
         results: list[VideoSearchResult] = []
         seen: set[str] = set()
         with ThreadPoolExecutor(max_workers=min(len(queries), 8)) as pool:
             for batch in pool.map(
-                lambda q: search_videos(q, max_results=per_query), queries
+                lambda q: search_videos(
+                    q, max_results=per_query, approximate_dates=want_dates
+                ),
+                queries,
             ):
                 for video in batch:
                     if video.url not in seen:
