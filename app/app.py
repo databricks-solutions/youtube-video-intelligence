@@ -97,6 +97,22 @@ THEME_PROMPT_TEMPLATE = (
     "Describe the overall sentiment and summarize the creator's stance."
 )
 
+THEME_QUESTION_SUFFIX = (
+    " Pay particular attention to anything that addresses this question, with "
+    "timestamps: {question}"
+)
+
+SEARCH_QUERY_PROMPT = (
+    "Turn this research request into one short YouTube search query (3 to 8 "
+    "words) that finds videos discussing it. Use the theme and the key terms "
+    "of the question exactly as written: they may name things newer than your "
+    "knowledge, so never substitute, correct or add names. Drop filler words "
+    "only. Reply with only the query, no quotes.\n\n"
+    "Theme: {theme}\nQuestion: {question}"
+)
+# A real search query is a few words; anything longer is the model rambling.
+MAX_SEARCH_QUERY_CHARS = 100
+
 
 # --- Shared helpers ---
 
@@ -374,6 +390,50 @@ def _theme_search_queries(theme: str, allow: set[str] | None) -> list[str]:
     return [theme]
 
 
+def _search_query(theme: str, question: str) -> str:
+    """Build the YouTube search query from the theme and optional question.
+
+    A broad theme alone ("Sea of Thieves") returns the theme's most popular
+    videos, which rarely address a specific question ("custom seas"). With a
+    question, the lite Gemini model condenses both into a focused query.
+
+    Args:
+        theme: The (stripped) search theme.
+        question: The (stripped) user question, or "".
+
+    Returns:
+        The focused query, or the theme if there is no question or the
+        rewrite fails or looks wrong.
+    """
+    if not question:
+        return theme
+    prompt = SEARCH_QUERY_PROMPT.format(theme=theme, question=question)
+    with gemini_semaphore:
+        raw = synthesize_text(get_gemini_client(), prompt, max_tokens=256)
+    lines = [line for line in raw.splitlines() if line.strip()]
+    query = " ".join(lines[0].split()).strip("\"'") if lines else ""
+    if not query or len(query) > MAX_SEARCH_QUERY_CHARS:
+        logger.warning("Search query rewrite unusable (%r); using theme", raw[:80])
+        return theme
+    return query
+
+
+def _theme_prompt(theme: str, question: str) -> str:
+    """Per-video analysis prompt, focused on the question when one is given.
+
+    Args:
+        theme: The (stripped) search theme.
+        question: The (stripped) user question, or "".
+
+    Returns:
+        The analysis prompt.
+    """
+    prompt = THEME_PROMPT_TEMPLATE.format(theme=theme)
+    if question:
+        prompt += THEME_QUESTION_SUFFIX.format(question=question)
+    return prompt
+
+
 def _run_theme_analysis(
     task_id: str,
     req: ThemeAnalysisRequest,
@@ -395,20 +455,34 @@ def _run_theme_analysis(
         _task_push(task_id, event)
 
     theme = req.theme.strip()
+    question = req.question.strip()
 
     try:
-        emit({"type": "progress", "pct": 2, "message": "Searching YouTube..."})
+        emit({"type": "progress", "pct": 1, "message": "Preparing search..."})
+        search_query = _search_query(theme, question)
+        emit(
+            {
+                "type": "progress",
+                "pct": 2,
+                "message": f'Searching YouTube for "{search_query}"...',
+            }
+        )
         allow = parse_blacklist(req.allowlist)
         # Allowlist: scope to fewer results per channel (the channel's on-theme
         # videos rank high in a scoped query) and run the channel searches in
         # parallel. ponytail: bounded pool; fine for a handful of channels.
         per_query = 20 if allow else 100
-        queries = _theme_search_queries(theme, allow)
+        # Upload dates only matter for a date filter (they also feed recency).
+        want_dates = bool(req.date_start or req.date_end)
+        queries = _theme_search_queries(search_query, allow)
         results: list[VideoSearchResult] = []
         seen: set[str] = set()
         with ThreadPoolExecutor(max_workers=min(len(queries), 8)) as pool:
             for batch in pool.map(
-                lambda q: search_videos(q, max_results=per_query), queries
+                lambda q: search_videos(
+                    q, max_results=per_query, approximate_dates=want_dates
+                ),
+                queries,
             ):
                 for video in batch:
                     if video.url not in seen:
@@ -447,11 +521,11 @@ def _run_theme_analysis(
         emit({"type": "videos_found", "videos": _videos_to_dicts(to_analyze)})
         emit({"type": "progress", "pct": 10, "message": f"Analyzing 0/{n} videos..."})
 
-        analyses, failed = _analyze_videos_parallel(emit, to_analyze, theme, n)
-
-        synthesis = _synthesize_analyses(
-            analyses, theme, emit, question=req.question.strip()
+        analyses, failed = _analyze_videos_parallel(
+            emit, to_analyze, _theme_prompt(theme, question), n
         )
+
+        synthesis = _synthesize_analyses(analyses, theme, emit, question=question)
         mosaic = [
             {
                 "url": a["url"],
@@ -515,7 +589,7 @@ def _videos_to_dicts(videos: list[VideoSearchResult]) -> list[dict]:
 def _analyze_videos_parallel(
     emit: Callable[[dict], None],
     videos: list[VideoSearchResult],
-    theme: str,
+    prompt: str,
     total: int,
 ) -> tuple[list[dict], list[str]]:
     """Analyze videos in parallel with Gemini, reporting progress.
@@ -523,14 +597,13 @@ def _analyze_videos_parallel(
     Args:
         emit: Callback to push SSE events.
         videos: Videos to analyze.
-        theme: Theme context for the analysis prompt.
+        prompt: Per-video analysis prompt (see _theme_prompt).
         total: Total video count (for progress reporting).
 
     Returns:
         Tuple of (successful analyses, failed video titles).
     """
     client = get_gemini_client()
-    prompt = THEME_PROMPT_TEMPLATE.format(theme=theme)
     analyses: list[dict] = []
     failed: list[str] = []
 

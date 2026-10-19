@@ -7,7 +7,7 @@ import re
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 
 import yt_dlp
 
@@ -43,12 +43,17 @@ class VideoSearchResult:
     search_rank: int  # 0-based position in YouTube search results
 
 
-def search_videos(query: str, max_results: int = 10) -> list[VideoSearchResult]:
+def search_videos(
+    query: str, max_results: int = 10, approximate_dates: bool = False
+) -> list[VideoSearchResult]:
     """Search YouTube for videos matching a query.
 
     Args:
         query: Free-text search query.
         max_results: Maximum number of results to return.
+        approximate_dates: Parse the search page's "4mo ago" text into an
+            approximate upload_date. Flat search returns no date otherwise, and
+            per-video lookups are bot-blocked on Databricks compute.
 
     Returns:
         List of VideoSearchResult with metadata (no video download).
@@ -60,6 +65,8 @@ def search_videos(query: str, max_results: int = 10) -> list[VideoSearchResult]:
         # Own instance + cache off per call, so searches can run concurrently.
         "cachedir": False,
     }
+    if approximate_dates:
+        opts["extractor_args"] = {"youtubetab": {"approximate_date": ["true"]}}
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(f"ytsearch{max_results}:{query}", download=False)
@@ -74,7 +81,8 @@ def search_videos(query: str, max_results: int = 10) -> list[VideoSearchResult]:
                     url=f"https://www.youtube.com/watch?v={video_id}",
                     title=entry.get("title", ""),
                     channel=entry.get("channel", entry.get("uploader", "")),
-                    upload_date=entry.get("upload_date", ""),
+                    upload_date=entry.get("upload_date")
+                    or _timestamp_to_yt_date(entry.get("timestamp")),
                     duration_seconds=int(entry.get("duration") or 0),
                     view_count=int(entry.get("view_count") or 0),
                     search_rank=rank,
@@ -84,6 +92,20 @@ def search_videos(query: str, max_results: int = 10) -> list[VideoSearchResult]:
     except Exception as e:
         logger.error("YouTube search failed: %s", e)
         return []
+
+
+def _timestamp_to_yt_date(timestamp: int | None) -> str:
+    """Convert a Unix timestamp to yt-dlp's YYYYMMDD date ("" if missing).
+
+    Args:
+        timestamp: Seconds since the epoch, or None.
+
+    Returns:
+        The UTC date as YYYYMMDD, or "".
+    """
+    if not timestamp:
+        return ""
+    return datetime.fromtimestamp(timestamp, UTC).strftime("%Y%m%d")
 
 
 @dataclass

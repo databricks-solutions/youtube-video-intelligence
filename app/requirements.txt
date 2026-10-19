@@ -106,5 +106,5 @@ uvicorn==0.42.0
     # via youtube-gemini-demo
 websockets==16.0
     # via google-genai
-yt-dlp==2026.3.17
+yt-dlp==2026.8.19
     # via youtube-gemini-demo
