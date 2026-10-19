@@ -9,19 +9,17 @@ import json
 import logging
 import os
 import queue
-import re
 import threading
 import time
 import uuid
-from collections.abc import AsyncGenerator, Awaitable, Callable
+from collections.abc import AsyncGenerator, Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from databricks.sdk import WorkspaceClient
 from dbdemos_tracker import Tracker
 from deps import gemini_semaphore, get_gemini_client, get_lakebase
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, Response, StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from formatting import (
     format_summary_markdown_from_dict,
@@ -56,35 +54,17 @@ app = FastAPI(title="YouTube Video Intelligence")
 # Demo name is the repo name, per the dbdemos-tracker convention.
 TRACKER_DEMO_NAME = "youtube-video-intelligence"
 # Page loads and the two analysis actions only; history polling would inflate
-# the view count.
-_TRACKED_PATH_RE = re.compile(r"/(api/analyze-(video|theme))?")
-
-
-def should_track(user_email: str, path: str) -> bool:
-    """Whether a request counts as a demo usage event.
-
-    dbdemos-tracker only drops the user hash for non-Databricks emails; it still
-    sends the workspace ID. Filtering here keeps customer deployments silent.
-
-    Args:
-        user_email: The X-Forwarded-Email header value ("" if absent).
-        path: The request URL path.
-
-    Returns:
-        True only for @databricks.com users on a tracked path.
-    """
-    return user_email.endswith("@databricks.com") and bool(
-        _TRACKED_PATH_RE.fullmatch(path)
-    )
+# the view count. re.match anchors at the start, so "/$" is the home page only.
+TRACKED_PATHS = ["/$", "/api/analyze-video$", "/api/analyze-theme$"]
 
 
 def add_usage_tracking(fastapi_app: FastAPI) -> None:
-    """Attach a dbdemos-tracker middleware when running as a Databricks App.
+    """Attach the dbdemos-tracker middleware when running as a Databricks App.
 
-    Resolving the workspace ID calls the Databricks API, so tracking is skipped
-    outside Databricks Apps (local dev, tests). A setup failure is logged and
-    never blocks startup. Events are fire-and-forget and only sent for requests
-    that pass `should_track`.
+    The tracker resolves the workspace ID through the Databricks API at setup,
+    so it is skipped outside Databricks Apps (local dev, tests). A setup failure
+    is logged and never blocks startup. Every signed-in user produces an anonymous
+    workspace-level event; only @databricks.com users also get a hashed user ID.
 
     Args:
         fastapi_app: The FastAPI application to instrument.
@@ -92,25 +72,11 @@ def add_usage_tracking(fastapi_app: FastAPI) -> None:
     if not os.environ.get("DATABRICKS_APP_NAME"):
         return
     try:
-        tracker = Tracker(
-            org_id=WorkspaceClient().get_workspace_id(), demo_name=TRACKER_DEMO_NAME
+        Tracker.add_tracker_fastapi(
+            fastapi_app, TRACKER_DEMO_NAME, patterns=TRACKED_PATHS
         )
     except Exception as exc:
         logger.warning("Usage tracking disabled: %s", exc)
-        return
-
-    @fastapi_app.middleware("http")
-    async def track_usage(
-        request: Request, call_next: Callable[[Request], Awaitable[Response]]
-    ) -> Response:
-        user_email = request.headers.get("x-forwarded-email", "")
-        path = request.url.path
-        if should_track(user_email, path):
-            try:
-                tracker.track_app_view(user_email=user_email, app_path=path)
-            except Exception as exc:
-                logger.warning("Usage tracking error: %s", exc)
-        return await call_next(request)
 
 
 add_usage_tracking(app)

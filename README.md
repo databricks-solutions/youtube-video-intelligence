@@ -24,7 +24,7 @@ FastAPI (app.py) -- SSE for real-time progress
 
 Deployed as a Databricks App via DAB. Lakebase project also managed by DAB.
 
-Usage is tracked with [dbdemos-tracker](https://github.com/databricks-field-eng/dbdemos-tracker) so the field can see how often the demo is used: page loads and analysis requests by `@databricks.com` users only, aggregated at team level. Nothing is sent for any other user, so a customer deployment sends no events. It is active only when running as a Databricks App.
+Usage is tracked with [dbdemos-tracker](https://github.com/databricks-field-eng/dbdemos-tracker) so the field can see how often the demo is used. Each page load and analysis request sends an anonymous event (workspace ID, demo name, request path) for any signed-in user; for `@databricks.com` users a hashed user ID is added so usage can be aggregated by team. No emails or names are sent. It is active only when running as a Databricks App. To turn it off, remove the `add_usage_tracking(app)` call in `app/app.py`.
 
 ## Prerequisites
 
