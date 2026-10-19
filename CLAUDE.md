@@ -98,6 +98,7 @@ The aim is turnkey: clone, set your workspace/prefix, `bundle deploy` + `run`, w
 - Global semaphore (10 concurrent) limits Gemini calls across all tabs/users
 - `analyze_video()` in `app/gemini.py` takes client as parameter (no module-level global)
 - `schema=None` on `analyze_video()` returns raw text (freeform Q&A mode)
+- Model selection (`_rank_models` in `app/gemini.py`): newest lite endpoint first, then newest of the rest; image endpoints dropped. Video analysis falls back down the list on errors. `GEMINI_MODEL` pins one. Keep README and `docs/demo_description.md` in sync with this rule.
 - Video token control: FPS=0.1, end_offset computed from yt-dlp duration minus 60s
 - yt-dlp `extract_flat=True` for search (metadata only, no download). Does NOT return upload_date.
 - `rank_videos()` scores by: relevancy 40%, views 35% (log-scaled), recency 25%

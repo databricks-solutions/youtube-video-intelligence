@@ -18,13 +18,10 @@ logger = logging.getLogger(__name__)
 
 # Foundation Model API provisions different Gemini models per workspace and
 # region, so the model is resolved at runtime instead of hardcoded. Selection
-# rule: prefer the Gemini 2.5 tier (it reliably serves video on FMAPI, whereas
-# the newer 3.x endpoints currently 502 on video input), then the flash/lite
-# tier, then the newest version. Everything else stays as a fallback. Set
-# GEMINI_MODEL to pin an explicit endpoint.
+# rule: prefer the newest lite endpoint (cheapest tier), then the newest of the
+# rest. Everything else stays as a fallback. Set GEMINI_MODEL to pin an
+# explicit endpoint.
 GEMINI_MODEL_ENV = "GEMINI_MODEL"
-# Video-capable tier on FMAPI today; revisit when 3.x serves video.
-_PREFERRED_VERSION = (2, 5)
 
 _endpoint_names: list[str] | None = None
 _model_lock = threading.Lock()
@@ -46,17 +43,12 @@ def _model_version(name: str) -> tuple[int, int]:
 
 
 def _rank_models(names: list[str]) -> list[str]:
-    """Rank Gemini endpoints best-first: the 2.5 tier first (it serves video on
-    FMAPI; 3.x endpoints currently 502 on video), then the flash/lite tier, then
-    newest version. Image-generation endpoints are dropped (they cannot analyze
-    video or text). Everything else stays in the list as a fallback."""
+    """Rank Gemini endpoints best-first: lite endpoints first, newest version
+    first within each group. Image-generation endpoints are dropped (they cannot
+    analyze video or text). Everything else stays in the list as a fallback."""
     return sorted(
         [n for n in names if "image" not in n],
-        key=lambda n: (
-            _model_version(n) == _PREFERRED_VERSION,
-            "flash" in n or "lite" in n,
-            _model_version(n),
-        ),
+        key=lambda n: ("lite" in n, _model_version(n)),
         reverse=True,
     )
 
@@ -183,7 +175,7 @@ def analyze_video(
     )
 
     # Try each candidate model; a 502/INTERNAL_ERROR means that model cannot
-    # serve the request (e.g. v3 flash endpoints 502 on video), so fall back to
+    # serve the request (e.g. it does not accept video input), so fall back to
     # the next one rather than failing the whole analysis.
     for candidate in models:
         for attempt in range(max_retries + 1):
@@ -226,8 +218,8 @@ def analyze_video(
                     )
                     time.sleep(3 * (attempt + 1))
                     continue
-                # This model failed (e.g. 502 on video, or a 400 from a model
-                # that cannot take video); fall back to the next candidate.
+                # This model failed (e.g. a 502 or 400 from a model that cannot
+                # take video); fall back to the next candidate.
                 logger.warning(
                     "%s failed for %s (%s); trying next model",
                     candidate,

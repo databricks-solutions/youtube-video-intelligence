@@ -475,43 +475,40 @@ def test_model_version_parsing() -> None:
     assert _model_version("databricks-claude-sonnet") == (0, 0)
 
 
-def test_rank_models_prefers_2_5_flash() -> None:
-    """The 2.5 tier (video-capable on FMAPI) ranks first, flash over pro."""
+def test_rank_models_prefers_newest_lite() -> None:
+    """Lite endpoints rank first, newest version first; the rest follow."""
     from gemini import _rank_models
 
     names = [
-        "databricks-gemini-3-5-flash",
+        "databricks-gemini-3-8-flash",
         "databricks-gemini-3-1-flash-lite",
-        "databricks-gemini-2-5-flash",
-        "databricks-gemini-2-5-pro",
+        "databricks-gemini-4-argon",
+        "databricks-gemini-3-5-flash-lite",
     ]
-    assert _rank_models(names)[0] == "databricks-gemini-2-5-flash"
+    assert _rank_models(names) == [
+        "databricks-gemini-3-5-flash-lite",
+        "databricks-gemini-3-1-flash-lite",
+        "databricks-gemini-4-argon",
+        "databricks-gemini-3-8-flash",
+    ]
 
 
-def test_rank_models_prefers_2_5_over_v3_pro() -> None:
-    """2.5 is preferred even over a higher-version pro model."""
+def test_rank_models_newest_without_lite() -> None:
+    """Without a lite endpoint, the newest version wins."""
     from gemini import _rank_models
 
-    names = ["databricks-gemini-3-5-pro", "databricks-gemini-2-5-flash"]
-    assert _rank_models(names)[0] == "databricks-gemini-2-5-flash"
-
-
-def test_rank_models_flash_over_pro_without_2_5() -> None:
-    """Without a 2.5 model, the flash tier wins, then newest version."""
-    from gemini import _rank_models
-
-    names = ["databricks-gemini-3-1-pro", "databricks-gemini-3-flash"]
-    assert _rank_models(names)[0] == "databricks-gemini-3-flash"
+    names = ["databricks-gemini-3-flash", "databricks-gemini-3-1-pro"]
+    assert _rank_models(names)[0] == "databricks-gemini-3-1-pro"
 
 
 def test_rank_models_drops_image_models() -> None:
-    """Image-generation endpoints are dropped entirely."""
+    """Image-generation endpoints are dropped entirely, lite or not."""
     from gemini import _rank_models
 
     ranked = _rank_models(
-        ["databricks-gemini-3-pro-image", "databricks-gemini-2-5-flash"]
+        ["databricks-gemini-3-1-flash-lite-image", "databricks-gemini-3-flash"]
     )
-    assert ranked == ["databricks-gemini-2-5-flash"]
+    assert ranked == ["databricks-gemini-3-flash"]
 
 
 def test_rank_models_empty() -> None:
