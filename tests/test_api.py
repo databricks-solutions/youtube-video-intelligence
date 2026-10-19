@@ -355,50 +355,70 @@ def test_get_user_email_missing() -> None:
 
 # ---------- usage tracking ----------
 
+_DBX_USER = "someone@databricks.com"
+_CUSTOMER_USER = "someone@customer.com"
+
+
+def test_should_track_only_databricks_users_on_tracked_paths() -> None:
+    """Only @databricks.com users on the home page or analyze endpoints count."""
+    assert app_mod.should_track(_DBX_USER, "/")
+    assert app_mod.should_track(_DBX_USER, "/api/analyze-video")
+    assert app_mod.should_track(_DBX_USER, "/api/analyze-theme")
+    assert not app_mod.should_track(_DBX_USER, "/api/history/videos")
+    assert not app_mod.should_track(_DBX_USER, "/app.jsx")
+    assert not app_mod.should_track(_CUSTOMER_USER, "/")
+    assert not app_mod.should_track("", "/")
+
 
 def test_usage_tracking_skipped_outside_databricks_apps() -> None:
     """No tracker outside a Databricks App (local dev, tests): setup needs auth."""
+    fake_app = MagicMock()
     with (
         patch.dict("os.environ", {}, clear=True),
-        patch.object(app_mod.Tracker, "add_tracker_fastapi") as add_tracker,
+        patch.object(app_mod, "WorkspaceClient") as ws_cls,
     ):
-        app_mod.add_usage_tracking(MagicMock())
-    add_tracker.assert_not_called()
+        app_mod.add_usage_tracking(fake_app)
+    ws_cls.assert_not_called()
+    fake_app.middleware.assert_not_called()
 
 
-def test_usage_tracking_wired_in_databricks_apps() -> None:
-    """Inside a Databricks App, tracks under the repo name."""
+def test_usage_tracking_setup_failure_is_non_fatal() -> None:
+    """A setup error (e.g. workspace API down) is logged and adds no middleware."""
     fake_app = MagicMock()
     with (
         patch.dict("os.environ", {"DATABRICKS_APP_NAME": "sc-video-intel-prod"}),
-        patch.object(app_mod.Tracker, "add_tracker_fastapi") as add_tracker,
+        patch.object(app_mod, "WorkspaceClient", side_effect=RuntimeError("down")),
     ):
         app_mod.add_usage_tracking(fake_app)
-    add_tracker.assert_called_once_with(
-        fake_app, "youtube-video-intelligence", patterns=app_mod.TRACKED_PATHS
-    )
+    fake_app.middleware.assert_not_called()
 
 
-def test_usage_tracking_failure_is_non_fatal() -> None:
-    """A tracker setup error (e.g. workspace API down) never blocks startup."""
+def test_usage_tracking_sends_nothing_for_non_databricks_users() -> None:
+    """End to end: only Databricks users on tracked paths produce an event."""
+    from fastapi import FastAPI
+
+    probe_app = FastAPI()
+
+    @probe_app.get("/")
+    def home() -> dict:
+        return {}
+
+    @probe_app.get("/api/history/videos")
+    def history() -> list:
+        return []
+
+    ws = MagicMock()
+    ws.get_workspace_id.return_value = 123
     with (
         patch.dict("os.environ", {"DATABRICKS_APP_NAME": "sc-video-intel-prod"}),
-        patch.object(
-            app_mod.Tracker, "add_tracker_fastapi", side_effect=RuntimeError("down")
-        ),
+        patch.object(app_mod, "WorkspaceClient", return_value=ws),
+        patch.object(app_mod.Tracker, "track_app_view") as track,
     ):
-        app_mod.add_usage_tracking(MagicMock())
-
-
-def test_tracked_paths_cover_page_load_and_actions_only() -> None:
-    """Page loads and the two analysis actions are tracked; history polling is not."""
-    import re
-
-    def tracked(path: str) -> bool:
-        return any(re.match(p, path) for p in app_mod.TRACKED_PATHS)
-
-    assert tracked("/")
-    assert tracked("/api/analyze-video")
-    assert tracked("/api/analyze-theme")
-    assert not tracked("/api/history/videos")
-    assert not tracked("/api/history/themes/abc")
+        app_mod.add_usage_tracking(probe_app)
+        client = TestClient(probe_app)
+        client.get("/", headers={"X-Forwarded-Email": _CUSTOMER_USER})
+        client.get("/", headers={})
+        client.get("/api/history/videos", headers={"X-Forwarded-Email": _DBX_USER})
+        track.assert_not_called()
+        client.get("/", headers={"X-Forwarded-Email": _DBX_USER})
+    track.assert_called_once_with(user_email=_DBX_USER, app_path="/")
