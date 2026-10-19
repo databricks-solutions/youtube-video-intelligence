@@ -351,3 +351,54 @@ def test_get_user_email_missing() -> None:
     mock_request = MagicMock()
     mock_request.headers = {}
     assert app_mod.get_user_email(mock_request) == ""
+
+
+# ---------- usage tracking ----------
+
+
+def test_usage_tracking_skipped_outside_databricks_apps() -> None:
+    """No tracker outside a Databricks App (local dev, tests): setup needs auth."""
+    with (
+        patch.dict("os.environ", {}, clear=True),
+        patch.object(app_mod.Tracker, "add_tracker_fastapi") as add_tracker,
+    ):
+        app_mod.add_usage_tracking(MagicMock())
+    add_tracker.assert_not_called()
+
+
+def test_usage_tracking_wired_in_databricks_apps() -> None:
+    """Inside a Databricks App, tracks under the repo name."""
+    fake_app = MagicMock()
+    with (
+        patch.dict("os.environ", {"DATABRICKS_APP_NAME": "sc-video-intel-prod"}),
+        patch.object(app_mod.Tracker, "add_tracker_fastapi") as add_tracker,
+    ):
+        app_mod.add_usage_tracking(fake_app)
+    add_tracker.assert_called_once_with(
+        fake_app, "youtube-video-intelligence", patterns=app_mod.TRACKED_PATHS
+    )
+
+
+def test_usage_tracking_failure_is_non_fatal() -> None:
+    """A tracker setup error (e.g. workspace API down) never blocks startup."""
+    with (
+        patch.dict("os.environ", {"DATABRICKS_APP_NAME": "sc-video-intel-prod"}),
+        patch.object(
+            app_mod.Tracker, "add_tracker_fastapi", side_effect=RuntimeError("down")
+        ),
+    ):
+        app_mod.add_usage_tracking(MagicMock())
+
+
+def test_tracked_paths_cover_page_load_and_actions_only() -> None:
+    """Page loads and the two analysis actions are tracked; history polling is not."""
+    import re
+
+    def tracked(path: str) -> bool:
+        return any(re.match(p, path) for p in app_mod.TRACKED_PATHS)
+
+    assert tracked("/")
+    assert tracked("/api/analyze-video")
+    assert tracked("/api/analyze-theme")
+    assert not tracked("/api/history/videos")
+    assert not tracked("/api/history/themes/abc")

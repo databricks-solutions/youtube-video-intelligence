@@ -7,6 +7,7 @@ youtube, and lakebase modules.
 import asyncio
 import json
 import logging
+import os
 import queue
 import threading
 import time
@@ -15,6 +16,7 @@ from collections.abc import AsyncGenerator, Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+from dbdemos_tracker import Tracker
 from deps import gemini_semaphore, get_gemini_client, get_lakebase
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -46,6 +48,37 @@ from youtube import (
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="YouTube Video Intelligence")
+
+# --- Usage tracking (dbdemos-tracker) ---
+
+# Demo name is the repo name, per the dbdemos-tracker convention.
+TRACKER_DEMO_NAME = "youtube-video-intelligence"
+# Page loads and the two analysis actions only; history polling would inflate
+# the view count. re.match anchors at the start, so "/$" is the home page only.
+TRACKED_PATHS = ["/$", "/api/analyze-video$", "/api/analyze-theme$"]
+
+
+def add_usage_tracking(fastapi_app: FastAPI) -> None:
+    """Attach the dbdemos-tracker middleware when running as a Databricks App.
+
+    The tracker resolves the workspace ID through the Databricks API at setup,
+    so it is skipped outside Databricks Apps (local dev, tests). A setup failure
+    is logged and never blocks startup. Only @databricks.com users are tracked.
+
+    Args:
+        fastapi_app: The FastAPI application to instrument.
+    """
+    if not os.environ.get("DATABRICKS_APP_NAME"):
+        return
+    try:
+        Tracker.add_tracker_fastapi(
+            fastapi_app, TRACKER_DEMO_NAME, patterns=TRACKED_PATHS
+        )
+    except Exception as exc:
+        logger.warning("Usage tracking disabled: %s", exc)
+
+
+add_usage_tracking(app)
 
 # --- Prompts ---
 

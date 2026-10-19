@@ -24,10 +24,12 @@ FastAPI (app.py) -- SSE for real-time progress
 
 Deployed as a Databricks App via DAB. Lakebase project also managed by DAB.
 
+Usage is tracked with [dbdemos-tracker](https://github.com/databricks-field-eng/dbdemos-tracker) so the field can see how often the demo is used: page loads and analysis requests by `@databricks.com` users only, aggregated at team level. It is active only when running as a Databricks App.
+
 ## Prerequisites
 
 **Model access**
-- At least one Gemini pay-per-token Foundation Model API endpoint available in the workspace. The app does not hardcode a model: at startup it lists the workspace's Gemini serving endpoints and picks one (preferring v3+, then the cheaper flash/lite tier, then the highest version), using the same endpoint for both video analysis and synthesis. Set the `GEMINI_MODEL` env var to pin a specific endpoint.
+- At least one Gemini pay-per-token Foundation Model API endpoint that accepts video input. The app does not hardcode a model: on first use it lists the workspace's Gemini serving endpoints (skipping image-generation ones) and ranks them with the newest lite endpoint first (the cheapest tier), then the newest of the rest. Video analysis falls back down that list if a model errors on a request; synthesis uses the top-ranked endpoint. Set the `GEMINI_MODEL` env var to pin a specific endpoint.
 - **Cross-geo processing enabled for Foundation Model APIs** (sometimes shown as "cross-geo routing"). Gemini is a partner-hosted model, and its video understanding fetches the YouTube URL server-side, so requests must be allowed to process across geos. This is enabled per workspace from the Databricks account console (account-level workspace settings), not via a support ticket.
 
 **Workspace capabilities**
