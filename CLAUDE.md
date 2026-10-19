@@ -106,6 +106,7 @@ The aim is turnkey: clone, set your workspace/prefix, `bundle deploy` + `run`, w
 - Lakebase connection via SQLAlchemy + psycopg2 with OAuth token refresh (45-min TTL)
 - JSONB columns for analysis results (no schema migrations needed)
 - User identity from `x-forwarded-email` header (Databricks App proxy)
+- Usage tracking: `dbdemos-tracker` FastAPI middleware (`add_usage_tracking` in `app/app.py`), demo name = repo name `youtube-video-intelligence`. Only attached when `DATABRICKS_APP_NAME` is set (setup calls the workspace API), only tracks `@databricks.com` users and only `TRACKED_PATHS` (home page + the two analyze endpoints, not history polling). Setup failures are logged, never fatal
 - Synthesis has retry logic (3 attempts, 15s gaps) due to FMAPI rate limits after parallel analysis
 - Notebooks still use `%run ./_resources/setup` and `%run ./_resources/youtube_urls` patterns
 
