@@ -312,10 +312,17 @@ describe("videoEventPatch", () => {
     assert.deepEqual(videoEventPatch(ev), { meta: ev });
   });
 
-  it("result clears status and sets result", () => {
+  it("result clears status and sets result and model", () => {
+    assert.deepEqual(
+      videoEventPatch({ type: "result", markdown: "**hi**", model: "gem-lite" }),
+      { result: "**hi**", status: "", model: "gem-lite" },
+    );
+  });
+
+  it("result defaults a missing model to empty string", () => {
     assert.deepEqual(
       videoEventPatch({ type: "result", markdown: "**hi**" }),
-      { result: "**hi**", status: "" },
+      { result: "**hi**", status: "", model: "" },
     );
   });
 
@@ -361,19 +368,21 @@ describe("themeEventPatch", () => {
     );
   });
 
-  it("result patches mosaic, synthesis, progress text, clears progress", () => {
+  it("result patches mosaic, synthesis, progress text, model, clears progress", () => {
     assert.deepEqual(
       themeEventPatch({
         type: "result",
         mosaic: [{ url: "x" }],
         synthesis: "summary",
         progress_text: "10 analyzed",
+        model: "gem-lite",
       }),
       {
         mosaic: [{ url: "x" }],
         synthesis: "summary",
         progressText: "10 analyzed",
         progress: null,
+        model: "gem-lite",
       },
     );
   });
@@ -381,7 +390,7 @@ describe("themeEventPatch", () => {
   it("result tolerates missing optional fields", () => {
     assert.deepEqual(
       themeEventPatch({ type: "result" }),
-      { mosaic: [], synthesis: "", progressText: "", progress: null },
+      { mosaic: [], synthesis: "", progressText: "", progress: null, model: "" },
     );
   });
 
@@ -445,24 +454,33 @@ describe("buildAnalyzeThemeBody", () => {
         "2024-12-31",
         45,
         "channel1\nchannel2",
+        "allowed1",
+        "who won?",
+        "trailer",
       ),
       {
         theme: "stalingrad",
+        question: "who won?",
         date_start: "2024-01-01",
         date_end: "2024-12-31",
         max_duration_min: 45,
         blacklist: "channel1\nchannel2",
+        allowlist: "allowed1",
+        exclude_terms: "trailer",
       },
     );
   });
 
   it("substitutes empty strings for missing optionals", () => {
-    assert.deepEqual(buildAnalyzeThemeBody("t", "", "", 30, ""), {
+    assert.deepEqual(buildAnalyzeThemeBody("t", "", "", 30, "", "", "", ""), {
       theme: "t",
+      question: "",
       date_start: "",
       date_end: "",
       max_duration_min: 30,
       blacklist: "",
+      allowlist: "",
+      exclude_terms: "",
     });
   });
 
@@ -471,10 +489,13 @@ describe("buildAnalyzeThemeBody", () => {
       buildAnalyzeThemeBody("t", undefined, undefined, 30, undefined),
       {
         theme: "t",
+        question: "",
         date_start: "",
         date_end: "",
         max_duration_min: 30,
         blacklist: "",
+        allowlist: "",
+        exclude_terms: "",
       },
     );
   });

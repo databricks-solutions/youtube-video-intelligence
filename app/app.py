@@ -460,7 +460,7 @@ def _run_theme_analysis(
             }
             for a in analyses
         ]
-        progress_text = f"**{len(analyses)}** of {n} videos analyzed."
+        progress_text = f"{len(analyses)} of {n} videos analyzed."
         if failed:
             progress_text += f" {len(failed)} failed."
 
