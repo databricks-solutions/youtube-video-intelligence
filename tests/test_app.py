@@ -143,6 +143,58 @@ def test_theme_search_queries() -> None:
     assert _theme_search_queries("ai", {"b", "a"}) == ["ai a", "ai b"]
 
 
+def test_search_query_without_question_skips_llm() -> None:
+    """No question: search the bare theme without a Gemini call."""
+    import app
+
+    with patch.object(app, "synthesize_text") as synth:
+        assert app._search_query("Sea of Thieves", "") == "Sea of Thieves"
+    synth.assert_not_called()
+
+
+def test_search_query_rewrites_theme_and_question() -> None:
+    """With a question, Gemini's focused query is used, cleaned of quotes/lines."""
+    import app
+
+    with (
+        patch.object(app, "get_gemini_client"),
+        patch.object(
+            app, "synthesize_text", return_value='"Sea of Thieves  custom seas"\n'
+        ) as synth,
+    ):
+        query = app._search_query(
+            "Sea of Thieves", "What are people saying about custom seas?"
+        )
+    assert query == "Sea of Thieves custom seas"
+    prompt = synth.call_args.args[1]
+    assert "Sea of Thieves" in prompt
+    assert "custom seas" in prompt
+
+
+def test_search_query_falls_back_to_theme_on_bad_output() -> None:
+    """Empty (failed call) or rambling output falls back to the bare theme."""
+    import app
+
+    for bad in ("", "word " * 40):
+        with (
+            patch.object(app, "get_gemini_client"),
+            patch.object(app, "synthesize_text", return_value=bad),
+        ):
+            assert app._search_query("Sea of Thieves", "custom seas?") == (
+                "Sea of Thieves"
+            )
+
+
+def test_theme_prompt_includes_question() -> None:
+    """The per-video prompt asks about the question when one is given."""
+    import app
+
+    assert "custom seas?" in app._theme_prompt("Sea of Thieves", "custom seas?")
+    assert app._theme_prompt("Sea of Thieves", "") == (
+        app.THEME_PROMPT_TEMPLATE.format(theme="Sea of Thieves")
+    )
+
+
 def test_synthesize_answers_question() -> None:
     """A question routes to a Q&A prompt and works even with a single video."""
     from types import SimpleNamespace
